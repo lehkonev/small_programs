@@ -5,6 +5,13 @@
 # that should be performed on each newline-separated value found in the file
 # defined in input_file.
 
+# PyCharm Community Edition 2016.2.3
+# Build #PC-162.1967.10, built on September 7, 2016
+# JRE: 1.8.0_112-release-b343 x86
+# JVM: OpenJDK Server VM by JetBrains s.r.o
+# Python 3.5.2
+# Windows 10 Home 64-bit
+
 ENC = "utf8"
 
 
