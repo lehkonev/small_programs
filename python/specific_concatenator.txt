@@ -1,0 +1,8 @@
+
+There should be a space here: " 
+" and then the concatenation value 
+$$$$$
+ for the first time.\n
+Now for the second time: 
+$$$$$
+.

@@ -1,33 +1,36 @@
+# Specific Concatenator
+# Creator: Veini Lehkonen, lehkonev@gmail.com
+##############################################################################
+# Reads a file (name defined in FILENAME) that defines a concatenation that
+# should be performed on each newline-separated value found in the file
+# defined in INPUT_FILE.
+
+FILENAME = "specific_concatenator.txt"
+COMMENT_MARK = "#"
+INPUT_FILE = "specific_concatenator_input.txt"
+OUTPUT_FILE = "specific_concatenator_output.txt"
+VARIABLE = "$$$$$"
+SEPARATOR = "\n\n"
+CLEAR_INPUT_FILE = False
+OVERWRITE_OUTPUT_FILE = True
+
+
 def main(filename):
-    new_filename = "k_" + filename
-    opnumlist = []
 
-    with open(filename, 'r', encoding="utf8") as filename:
+    # Rewrite that.
 
-        for line in filename:
-            if line[-1:] == "\n":
-                line = line[:-1]
-            opnumlist.append(line)
-
-        new_file = ""
-        cmd_path1 = ""
-        cmd_path2 = ""
-        cmd_path3 = ""
-        cmd_copy = ""
-        cmd_chgrp = ""
-        cmd_chmod = ""
-        cmd_emacs = ""
-
-        for opnum in opnumlist:
-            new_file += cmd_copy + cmd_path1 + opnum + cmd_path2
-            new_file += cmd_chgrp + cmd_path1 + opnum + cmd_path2
-            new_file += cmd_chmod + cmd_path1 + opnum + cmd_path2
-            new_file += cmd_emacs + cmd_path1 + opnum + cmd_path2
-            new_file += cmd_emacs + cmd_path1 + opnum + cmd_path3
-            new_file += "\n"
-
-        with open(new_filename, 'w+', encoding="utf8") as new_filename:
-            new_filename.write(new_file)
+    # new_filename = "k_" + filename
+    # opnumlist = []
+    #
+    # with open(filename, 'r', encoding="utf8") as filename:
+    #
+    #     for line in filename:
+    #         if line[-1:] == "\n":
+    #             line = line[:-1]
+    #         opnumlist.append(line)
+    #
+    #     with open(new_filename, 'w+', encoding="utf8") as new_filename:
+    #         new_filename.write(new_file)
 
 
-main("opnum.txt",)
+main(FILENAME)
