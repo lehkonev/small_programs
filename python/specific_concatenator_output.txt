@@ -1,0 +1,41 @@
+There should be a space here: " " and then the concatenation value 1 for the first time.
+Now for the second time: 1.
+
+There should be a space here: " " and then the concatenation value 2 for the first time.
+Now for the second time: 2.
+
+There should be a space here: " " and then the concatenation value 3 for the first time.
+Now for the second time: 3.
+
+There should be a space here: " " and then the concatenation value 4 for the first time.
+Now for the second time: 4.
+
+There should be a space here: " " and then the concatenation value 5 for the first time.
+Now for the second time: 5.
+
+There should be a space here: " " and then the concatenation value 6 for the first time.
+Now for the second time: 6.
+
+There should be a space here: " " and then the concatenation value 7 for the first time.
+Now for the second time: 7.
+
+There should be a space here: " " and then the concatenation value 8 for the first time.
+Now for the second time: 8.
+
+There should be a space here: " " and then the concatenation value 9 for the first time.
+Now for the second time: 9.
+
+There should be a space here: " " and then the concatenation value 1234 for the first time.
+Now for the second time: 1234.
+
+There should be a space here: " " and then the concatenation value 23456 for the first time.
+Now for the second time: 23456.
+
+There should be a space here: " " and then the concatenation value 456 for the first time.
+Now for the second time: 456.
+
+There should be a space here: " " and then the concatenation value 678 for the first time.
+Now for the second time: 678.
+
+There should be a space here: " " and then the concatenation value 0 for the first time.
+Now for the second time: 0.

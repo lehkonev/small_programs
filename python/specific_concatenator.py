@@ -1,36 +1,90 @@
 # Specific Concatenator
 # Creator: Veini Lehkonen, lehkonev@gmail.com
 ##############################################################################
-# Reads a file (name defined in FILENAME) that defines a concatenation that
-# should be performed on each newline-separated value found in the file
-# defined in INPUT_FILE.
+# Reads a file (filename defined in conc_file) that defines a concatenation
+# that should be performed on each newline-separated value found in the file
+# defined in input_file.
 
-FILENAME = "specific_concatenator.txt"
-COMMENT_MARK = "#"
-INPUT_FILE = "specific_concatenator_input.txt"
-OUTPUT_FILE = "specific_concatenator_output.txt"
-VARIABLE = "$$$$$"
-SEPARATOR = "\n\n"
-CLEAR_INPUT_FILE = False
-OVERWRITE_OUTPUT_FILE = True
+ENC = "utf8"
 
 
-def main(filename):
+def specific_concatenator(conc_file ="specific_concatenator.txt",
+                          input_file = "specific_concatenator_input.txt",
+                          output_file = "specific_concatenator_output.txt",
+                          conc_comment = "#",
+                          input_comment = "",
+                          variable = "$$$$$",
+                          separator = "\n\n",
+                          write_mode = 'w',  # w: truncate, x: fail if exists.
+                          encoding_concatenation = ENC,
+                          encoding_input = ENC,
+                          encoding_output = ENC):
 
-    # Rewrite that.
+    listing = read_file(conc_file, conc_comment, encoding_concatenation)
+    listing_input = read_file(input_file, input_comment, encoding_input)
 
-    # new_filename = "k_" + filename
-    # opnumlist = []
-    #
-    # with open(filename, 'r', encoding="utf8") as filename:
-    #
-    #     for line in filename:
-    #         if line[-1:] == "\n":
-    #             line = line[:-1]
-    #         opnumlist.append(line)
-    #
-    #     with open(new_filename, 'w+', encoding="utf8") as new_filename:
-    #         new_filename.write(new_file)
+    if (len(listing) != 0) and (len(listing_input) != 0):
+        write_file(output_file,
+                   listing, listing_input,
+                   variable, separator,
+                   write_mode, encoding_output)
 
 
-main(FILENAME)
+# Finds and replaces intentional newlines (\\n) in the input string (str)
+# with proper newlines (\n) and returns the result.
+# This should be done to all escape characters.
+def escape_character_fix(str):
+    found = str.find("\\n")
+    while found != -1:
+        str = str[:found] + "\n" + str[found+2:]
+        found = str.find("\\n")
+    return str
+
+
+# Removes a possible ending newline from the input string (str)
+# and returns it.
+def remove_end_newline(str):
+    if str[-1:] == "\n":
+        str = str[:-1]
+    return str
+
+
+def read_file(filename, comment_mark, file_encoding):
+    listing = []
+    with open(filename, 'r', encoding=file_encoding) as filereading:
+        for line in filereading:
+            if not ((line == "\n") or (line == "")):
+                if not (line[0] == comment_mark):
+                    line = remove_end_newline(line)
+                    line = escape_character_fix(line)
+                    listing.append(line)
+
+    return listing
+
+
+def write_file(filename, concatenations, input, variable, separator,
+                write_mode, encoding_output):
+    with open(filename, write_mode, encoding=encoding_output) as new_file:
+        new_file.write(concatenate(concatenations, input, variable, separator))
+
+# This function is best explained with an example.
+# Example concatenations: ["1", variable, "2 ", "3", variable, "4"]
+# Example input: ["first", "second"]
+# Example result_list: ["1first2 3first4", "1second2 3second4"]
+# Returns a string joined from the values of result_list, using separator as
+# separator.
+def concatenate(concatenations, input, variable, separator):
+    result_list = []
+    for value in input:
+        concatenation = ""
+        for piece in concatenations:
+            if piece != variable:
+                concatenation += piece
+            else:
+                concatenation += value
+        result_list.append(concatenation)
+    return separator.join(result_list)
+
+
+specific_concatenator()
+#specific_concatenator("ops.txt", "opnum.txt", "opnum_output.txt")
