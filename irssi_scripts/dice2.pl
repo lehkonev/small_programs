@@ -69,7 +69,8 @@ $VERSION = '0.1.5';
 );
 
 # The command will only be accepted from these channels.
-our @kanavat => ("nanowrimo", "finnnano", "homoloordit");
+# Format: ("channel1", "channel2")
+our @kanavat => ();
 
 sub own_question {
 	my ($server, $msg, $nick, $address, $target) = @_;

@@ -1,3 +1,16 @@
+# Specific Concatenator
+# Creator: Veini Lehkonen, lehkonev@gmail.com
+# Version: 0.1 (gamma)
+# Date: 2016-10-23
+# ----------------------------------------------------------------------------
+# Environment used to create and test:
+# PyCharm Community Edition 2016.2.3
+# Build #PC-162.1967.10, built on September 7, 2016
+# JRE: 1.8.0_112-release-b343 x86
+# JVM: OpenJDK Server VM by JetBrains s.r.o
+# Python 3.5.2
+# Windows 10 Home 64-bit
+##############################################################################
 # This doesn’t work properly yet, but if works well enough.
 # Faults:
 # If input has an empty row,it isn’t inserted into the not per_table output
@@ -5,8 +18,6 @@
 # If input has a row with empty values, the empty values are inserted in the
 # not per_table output (good), and an empty row is inserted in the
 # per_table output (bad or neutral – should it also be empty values?).
-# This file was wiped clean for unknown reasons and it was why I made this
-# repository. I am slightly bitter.
 
 import csv
 
@@ -59,6 +70,10 @@ def main(filename, outfile, per_table=True):
             for result_table in csvlist:
                 for roww in result_table:
                     csvwriter.writerow(roww)
+
+
+# This file was wiped clean for unknown reasons and it was why I made this
+# repository. I am slightly bitter.
 
 
 main("csv_transposer_input.csv", "csv_transposer_output.csv", False)

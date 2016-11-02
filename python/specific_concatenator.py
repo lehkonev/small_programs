@@ -1,16 +1,19 @@
 # Specific Concatenator
 # Creator: Veini Lehkonen, lehkonev@gmail.com
-##############################################################################
-# Reads a file (filename defined in conc_file) that defines a concatenation
-# that should be performed on each newline-separated value found in the file
-# defined in input_file.
-
+# Version: 0.1
+# Date: 2016-10-22
+# ----------------------------------------------------------------------------
+# Environment used to create and test:
 # PyCharm Community Edition 2016.2.3
 # Build #PC-162.1967.10, built on September 7, 2016
 # JRE: 1.8.0_112-release-b343 x86
 # JVM: OpenJDK Server VM by JetBrains s.r.o
 # Python 3.5.2
 # Windows 10 Home 64-bit
+##############################################################################
+# Reads a file (filename defined in conc_file) that defines a concatenation
+# that should be performed on each newline-separated value found in the file
+# defined in input_file.
 
 ENC = "utf8"
 
