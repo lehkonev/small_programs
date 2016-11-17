@@ -96,5 +96,5 @@ def concatenate(concatenations, input, variable, separator):
     return separator.join(result_list)
 
 
-specific_concatenator()
-#specific_concatenator("ops.txt", "opnum.txt", "opnum_output.txt")
+#specific_concatenator()
+specific_concatenator("ops2.txt", "opnum2.txt", "opnum2_output.txt")
