@@ -72,10 +72,12 @@ def read_file(filename, comment_mark, file_encoding):
     return listing
 
 
-def write_file(filename, concatenations, input, variable, separator,
-                write_mode, encoding_output):
+def write_file(filename, concatenations, input_list, variable, separator,
+               write_mode, encoding_output):
     with open(filename, write_mode, encoding=encoding_output) as new_file:
-        new_file.write(concatenate(concatenations, input, variable, separator))
+        new_file.write(concatenate(concatenations, input_list, variable,
+                                   separator))
+
 
 # This function is best explained with an example.
 # Example concatenations: ["1", variable, "2 ", "3", variable, "4"]
@@ -97,4 +99,4 @@ def concatenate(concatenations, input, variable, separator):
 
 
 #specific_concatenator()
-specific_concatenator("ops2.txt", "opnum2.txt", "opnum2_output.txt")
+specific_concatenator("c.txt", "c_input.txt", "c_output.txt")
