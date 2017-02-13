@@ -10,6 +10,7 @@
 ; This script is supposed to be run when the system starts, to allow making more use of my laptop’s keyboard. Essentially it adds functionality to five keys that do not do anything if the laptop’s input language is not Japanese (three conversion keys and two keys not found in other keyboards). This script also assumes a certain self-made keyboard layout. The keyboard layout does not function properly, which is why some dead keys are defined here as well.
 
 #NoEnv
+#KeyHistory 0
 SendMode Input
 SetWorkingDir %A_ScriptDir%
 
