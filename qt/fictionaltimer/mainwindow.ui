@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>533</width>
+    <width>550</width>
     <height>543</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
-  <widget class="QWidget" name="centralWidget">
+  <widget class="QWidget" name="paanakyma">
    <widget class="QLabel" name="aika_teksti">
     <property name="geometry">
      <rect>
@@ -82,7 +82,7 @@
    <widget class="QPushButton" name="aika_nappi">
     <property name="geometry">
      <rect>
-      <x>390</x>
+      <x>420</x>
       <y>320</y>
       <width>121</width>
       <height>20</height>
@@ -97,28 +97,28 @@
      <rect>
       <x>230</x>
       <y>60</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>mm</string>
+      <string>mm (10^-3)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>cm</string>
+      <string>cm (10^-2)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>m</string>
+      <string>m (10^0)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>km</string>
+      <string>km (10^3)</string>
      </property>
     </item>
    </widget>
@@ -127,23 +127,23 @@
      <rect>
       <x>230</x>
       <y>310</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>s</string>
+      <string>s (10^0)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>min</string>
+      <string>min (60)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>h</string>
+      <string>h (360)</string>
      </property>
     </item>
     <item>
@@ -162,18 +162,18 @@
      <rect>
       <x>230</x>
       <y>160</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>g</string>
+      <string>g (10^-3)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>kg</string>
+      <string>kg (10^0)</string>
      </property>
     </item>
    </widget>
@@ -182,33 +182,33 @@
      <rect>
       <x>230</x>
       <y>330</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>M</string>
+      <string>M (16^0)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>nM</string>
+      <string>nM (16^1)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>mM</string>
+      <string>mM (16^2)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>rM</string>
+      <string>rM (16^3)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>tM</string>
+      <string>tM (16^4)</string>
      </property>
     </item>
     <item>
@@ -227,7 +227,7 @@
      <rect>
       <x>230</x>
       <y>210</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
@@ -247,7 +247,7 @@
      <rect>
       <x>230</x>
       <y>260</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
@@ -360,7 +360,7 @@
    <widget class="QLineEdit" name="aika_kentta_hex">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>330</x>
       <y>330</y>
       <width>71</width>
       <height>20</height>
@@ -370,7 +370,7 @@
    <widget class="QLineEdit" name="pituus_kentta_hex">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>330</x>
       <y>80</y>
       <width>71</width>
       <height>20</height>
@@ -380,7 +380,7 @@
    <widget class="QLineEdit" name="paino_kentta_hex">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>330</x>
       <y>180</y>
       <width>71</width>
       <height>20</height>
@@ -390,7 +390,7 @@
    <widget class="QLineEdit" name="lampo_kentta_hex">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>330</x>
       <y>230</y>
       <width>71</width>
       <height>20</height>
@@ -400,7 +400,7 @@
    <widget class="QLineEdit" name="sahko_kentta_hex">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>330</x>
       <y>280</y>
       <width>71</width>
       <height>20</height>
@@ -412,33 +412,33 @@
      <rect>
       <x>230</x>
       <y>280</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>R</string>
+      <string>R (16^0)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>nR</string>
+      <string>nR (16^1)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>mR</string>
+      <string>mR (16^2)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>rR</string>
+      <string>rR (16^3)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>tR</string>
+      <string>tR (16^4)</string>
      </property>
     </item>
    </widget>
@@ -447,33 +447,33 @@
      <rect>
       <x>230</x>
       <y>230</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>G</string>
+      <string>G (16^0)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>nG</string>
+      <string>nG (16^1)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>mG</string>
+      <string>mG (16^2)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>rG</string>
+      <string>rG (16^3)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>tG</string>
+      <string>tG (16^4)</string>
      </property>
     </item>
    </widget>
@@ -482,33 +482,33 @@
      <rect>
       <x>230</x>
       <y>180</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>T</string>
+      <string>T (16^0)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>nT</string>
+      <string>nT (16^1)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>mT</string>
+      <string>mT (16^2)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>rT</string>
+      <string>rT  (16^3)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>tT</string>
+      <string>tT (16^4)</string>
      </property>
     </item>
    </widget>
@@ -517,33 +517,33 @@
      <rect>
       <x>230</x>
       <y>80</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
     <item>
      <property name="text">
-      <string>S</string>
+      <string>S (16^0)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>nS</string>
+      <string>nS (16^1)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>mS</string>
+      <string>mS (16^2)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>rS</string>
+      <string>rS (16^3)</string>
      </property>
     </item>
     <item>
      <property name="text">
-      <string>tS</string>
+      <string>tS (16^4)</string>
      </property>
     </item>
    </widget>
@@ -856,7 +856,7 @@
      <rect>
       <x>230</x>
       <y>110</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
@@ -876,7 +876,7 @@
      <rect>
       <x>230</x>
       <y>130</y>
-      <width>72</width>
+      <width>91</width>
       <height>22</height>
      </rect>
     </property>
@@ -889,7 +889,7 @@
    <widget class="QLineEdit" name="nopeus_kentta_hex">
     <property name="geometry">
      <rect>
-      <x>310</x>
+      <x>330</x>
       <y>130</y>
       <width>71</width>
       <height>20</height>
@@ -1057,7 +1057,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>533</width>
+     <width>550</width>
      <height>20</height>
     </rect>
    </property>
@@ -1068,17 +1068,35 @@
     <addaction name="toiminto_nollaa"/>
     <addaction name="toiminto_lopeta"/>
    </widget>
+   <widget class="QMenu" name="valikko_ohje">
+    <property name="title">
+     <string>Ohje</string>
+    </property>
+    <addaction name="toiminto_ohjeet"/>
+    <addaction name="toiminto_tietoja"/>
+   </widget>
    <addaction name="valikko_tiedosto"/>
+   <addaction name="valikko_ohje"/>
   </widget>
   <widget class="QStatusBar" name="tilapalkki"/>
   <action name="toiminto_nollaa">
    <property name="text">
-    <string>Nollaa</string>
+    <string>Nollaa arvot</string>
    </property>
   </action>
   <action name="toiminto_lopeta">
    <property name="text">
-    <string>Lopeta</string>
+    <string>Lopeta ohjelma</string>
+   </property>
+  </action>
+  <action name="toiminto_ohjeet">
+   <property name="text">
+    <string>Ohjeet…</string>
+   </property>
+  </action>
+  <action name="toiminto_tietoja">
+   <property name="text">
+    <string>Tietoja ohjelmasta…</string>
    </property>
   </action>
  </widget>
