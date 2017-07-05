@@ -79,7 +79,7 @@ void MainWindow::sahko_hex(){}
 void MainWindow::sahko_sk(){}
 void MainWindow::sahko_si()
 {
-    ui->pituus_kentta_sk->setText("pöö");
+    ui->pituus_kentta_sk->setText("pöö!");
 }
 void MainWindow::sahko_sk_yksikko(){}
 void MainWindow::sahko_si_yksikko(){}

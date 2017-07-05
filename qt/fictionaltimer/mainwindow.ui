@@ -118,7 +118,7 @@
     </item>
     <item>
      <property name="text">
-      <string>km (10^3)</string>
+      <string>km (10³)</string>
      </property>
     </item>
    </widget>
