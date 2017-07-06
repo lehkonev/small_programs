@@ -12,12 +12,15 @@ TARGET = FictionalUnits
 TEMPLATE = app
 
 
-SOURCES += main.cpp\
-        mainwindow.cpp
+SOURCES += source/main.cpp\
+        source/mainwindow.cpp
 
-HEADERS += mainwindow.h
+HEADERS += source/mainwindow.h
 
 FORMS += \
-    mainwindow.ui
+    source/mainwindow.ui
 
-TRANSLATIONS += funits_fi.ts
+TRANSLATIONS += languages/funits_fi.ts
+
+DISTFILES += \
+    languages/funits_fi.ts
