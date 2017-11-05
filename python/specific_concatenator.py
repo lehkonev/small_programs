@@ -18,17 +18,17 @@
 ENC = "utf8"
 
 
-def specific_concatenator(conc_file ="specific_concatenator.txt",
-                          input_file = "specific_concatenator_input.txt",
-                          output_file = "specific_concatenator_output.txt",
-                          conc_comment = "#",
-                          input_comment = "",
-                          variable = "$$$$$",
-                          separator = "\n\n",
-                          write_mode = 'w',  # w: truncate, x: fail if exists.
-                          encoding_concatenation = ENC,
-                          encoding_input = ENC,
-                          encoding_output = ENC):
+def specific_concatenator(conc_file="specific_concatenator.txt",
+                          input_file="specific_concatenator_input.txt",
+                          output_file="specific_concatenator_output.txt",
+                          conc_comment="#",
+                          input_comment="",
+                          variable="$$$$$",
+                          separator="\n\n",
+                          write_mode='w',  # w: truncate, x: fail if exists.
+                          encoding_concatenation=ENC,
+                          encoding_input=ENC,
+                          encoding_output=ENC):
 
     listing = read_file(conc_file, conc_comment, encoding_concatenation)
     listing_input = read_file(input_file, input_comment, encoding_input)
@@ -43,20 +43,20 @@ def specific_concatenator(conc_file ="specific_concatenator.txt",
 # Finds and replaces intentional newlines (\\n) in the input string (str)
 # with proper newlines (\n) and returns the result.
 # This should be done to all escape characters.
-def escape_character_fix(str):
-    found = str.find("\\n")
+def escape_character_fix(stri):
+    found = stri.find("\\n")
     while found != -1:
-        str = str[:found] + "\n" + str[found+2:]
-        found = str.find("\\n")
-    return str
+        stri = stri[:found] + "\n" + stri[found+2:]
+        found = stri.find("\\n")
+    return stri
 
 
 # Removes a possible ending newline from the input string (str)
 # and returns it.
-def remove_end_newline(str):
-    if str[-1:] == "\n":
-        str = str[:-1]
-    return str
+def remove_end_newline(stri):
+    if stri[-1:] == "\n":
+        stri = stri[:-1]
+    return stri
 
 
 def read_file(filename, comment_mark, file_encoding):
@@ -85,9 +85,9 @@ def write_file(filename, concatenations, input_list, variable, separator,
 # Example result_list: ["1first2 3first4", "1second2 3second4"]
 # Returns a string joined from the values of result_list, using separator as
 # separator.
-def concatenate(concatenations, input, variable, separator):
+def concatenate(concatenations, inputs, variable, separator):
     result_list = []
-    for value in input:
+    for value in inputs:
         concatenation = ""
         for piece in concatenations:
             if piece != variable:
@@ -99,4 +99,4 @@ def concatenate(concatenations, input, variable, separator):
 
 
 #specific_concatenator()
-specific_concatenator("c.txt", "c_input.txt", "c_output.txt")
+specific_concatenator("specific_concatenator.txt", "specific_concatenator_input.txt", "specific_concatenator_output.txt")

@@ -11,11 +11,14 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 TARGET = FictionalUnits
 TEMPLATE = app
 
+CONFIG += c++11
 
 SOURCES += source/main.cpp\
-        source/mainwindow.cpp
+        source/mainwindow.cpp \
+    source/funitssettings.cpp
 
-HEADERS += source/mainwindow.h
+HEADERS += source/mainwindow.h \
+    source/funitssettings.h
 
 FORMS += \
     source/mainwindow.ui
@@ -23,4 +26,6 @@ FORMS += \
 TRANSLATIONS += languages/funits_fi.ts
 
 DISTFILES += \
-    languages/funits_fi.ts
+    configuration/test.conf
+
+DESTDIR = $$PWD

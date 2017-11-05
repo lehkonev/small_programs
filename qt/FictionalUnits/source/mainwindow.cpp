@@ -2,6 +2,7 @@
  * https://doc.qt.io/qt-5/qtwidgets-mainwindows-menus-example.html
  */
 
+#include "funitssettings.h"
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
@@ -13,7 +14,7 @@ MainWindow::MainWindow(QWidget *parent):
     ui_(new Ui::MainWindow)
 {
     ui_->setupUi(this);
-    this->setWindowTitle(tr("Fictional Unit Converter and Timer"));
+    this->setWindowTitle(FunitsSettings::instance()->getAppName());
 
     QWidget *widget = new QWidget;
 
@@ -37,14 +38,59 @@ MainWindow::MainWindow(QWidget *parent):
     layout->addWidget(bottomFiller);
     widget->setLayout(layout);
 
-    createActions();
-    createMenus();
-
     QString message = tr("A context menu is NOT available by right-clicking");
     statusBar()->showMessage(message);
 
     setMinimumSize(160, 160);
     resize(480, 320);
+
+    //-------------------------------------------------------------------------
+    // Create menu actions:
+    QAction* reset_action = new QAction(tr("&Reset"), this);
+    reset_action->setShortcut(tr("Ctrl+R"));
+    reset_action->setStatusTip(tr("Reset the application’s fields."));
+    connect(reset_action, &QAction::triggered, this, &MainWindow::reset);
+
+    QAction* lang_en_action = new QAction(tr("&English"), this);
+    lang_en_action->setCheckable(true);
+    lang_en_action->setStatusTip(tr("Set the application’s language to English."));
+    connect(lang_en_action, &QAction::triggered, this, &MainWindow::setLangEnglish);
+
+    QAction* lang_fi_action = new QAction(tr("&Finnish"), this);
+    lang_fi_action->setCheckable(true);
+    lang_fi_action->setStatusTip(tr("Set the application’s language to Finnish."));
+    connect(lang_fi_action, &QAction::triggered, this, &MainWindow::setLangFinnish);
+
+    QActionGroup* lang_actions = new QActionGroup(this);
+    lang_actions->addAction(lang_en_action);
+    lang_actions->addAction(lang_fi_action);
+    // The following should be read from a configuration file or something.
+    lang_en_action->setChecked(true);
+
+    QAction* exit_action = new QAction(tr("&Quit"), this);
+    exit_action->setShortcut(tr("Ctrl+Q"));
+    exit_action->setStatusTip(tr("Exit the application."));
+    connect(exit_action, &QAction::triggered, this, &QWidget::close);
+
+    QAction* about_action = new QAction(tr("&About…"), this);
+    about_action->setStatusTip(tr("Show the About… window."));
+    connect(about_action, &QAction::triggered, this, &MainWindow::about);
+
+    //-------------------------------------------------------------------------
+    // Create menus and put in the actions:
+    QMenu* app_menu = ui_->menubar->addMenu(tr("&Application"));
+    app_menu->addAction(reset_action);
+
+    QMenu* lang_menu = app_menu->addMenu(tr("&Language"));
+    lang_menu->addSeparator()->setText(tr("Languages"));
+    lang_menu->addAction(lang_en_action);
+    lang_menu->addAction(lang_fi_action);
+    lang_menu->addSeparator();
+
+    app_menu->addAction(exit_action);
+
+    QMenu* help_menu = ui_->menubar->addMenu(tr("&Help"));
+    help_menu->addAction(about_action);
 }
 
 MainWindow::~MainWindow()
@@ -52,185 +98,26 @@ MainWindow::~MainWindow()
     delete ui_;
 }
 
-void MainWindow::createActions()
+void MainWindow::reset()
 {
-    newAct = new QAction(tr("&New"), this);
-    newAct->setShortcuts(QKeySequence::New);
-    newAct->setStatusTip(tr("Create a new file"));
-    connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
-
-    exitAct = new QAction(tr("&Quit"), this);
-    exitAct->setShortcut(tr("Ctrl+Q"));
-    exitAct->setStatusTip(tr("Exit the application"));
-    connect(exitAct, &QAction::triggered, this, &QWidget::close);
-
-    leftAlignAct = new QAction(tr("&Left Align"), this);
-    leftAlignAct->setCheckable(true);
-    leftAlignAct->setShortcut(tr("Ctrl+L"));
-    leftAlignAct->setStatusTip(tr("Left align the selected text"));
-    connect(leftAlignAct, &QAction::triggered, this, &MainWindow::leftAlign);
-
-    rightAlignAct = new QAction(tr("&Right Align"), this);
-    rightAlignAct->setCheckable(true);
-    rightAlignAct->setShortcut(tr("Ctrl+R"));
-    rightAlignAct->setStatusTip(tr("Right align the selected text"));
-    connect(rightAlignAct, &QAction::triggered, this, &MainWindow::rightAlign);
-
-    justifyAct = new QAction(tr("&Justify"), this);
-    justifyAct->setCheckable(true);
-    justifyAct->setShortcut(tr("Ctrl+J"));
-    justifyAct->setStatusTip(tr("Justify the selected text"));
-    connect(justifyAct, &QAction::triggered, this, &MainWindow::justify);
-
-    centerAct = new QAction(tr("&Center"), this);
-    centerAct->setCheckable(true);
-    centerAct->setShortcut(tr("Ctrl+E"));
-    centerAct->setStatusTip(tr("Center the selected text"));
-    connect(centerAct, &QAction::triggered, this, &MainWindow::center);
-
-    alignmentGroup = new QActionGroup(this);
-    alignmentGroup->addAction(leftAlignAct);
-    alignmentGroup->addAction(rightAlignAct);
-    alignmentGroup->addAction(justifyAct);
-    alignmentGroup->addAction(centerAct);
-    leftAlignAct->setChecked(true);
+    infoLabel->setText(tr("Reset application’s values."));
 }
 
-void MainWindow::createMenus()
+void MainWindow::setLangEnglish()
 {
-    QMenu* pm = ui_->menubar->addMenu(tr("&Program"));
-    fileMenu = menuBar()->addMenu(tr("&File"));
-    pm->addAction(newAct);
-    fileMenu->addAction(newAct);
-/*    fileMenu->addAction(openAct);
-    fileMenu->addAction(saveAct);
-    fileMenu->addAction(printAct);
-    fileMenu->addSeparator();
-*/
-    fileMenu->addAction(exitAct);
-
-    editMenu = menuBar()->addMenu(tr("&Edit"));
-/*    editMenu->addAction(undoAct);
-    editMenu->addAction(redoAct);
-*/    editMenu->addSeparator();
-/*    editMenu->addAction(cutAct);
-    editMenu->addAction(copyAct);
-    editMenu->addAction(pasteAct);
-    editMenu->addSeparator();
-
-    helpMenu = menuBar()->addMenu(tr("&Help"));
-    helpMenu->addAction(aboutAct);
-    helpMenu->addAction(aboutQtAct);
-
-*/
-    formatMenu = editMenu->addMenu(tr("&Format"));
-//    formatMenu->addAction(boldAct);
-//    formatMenu->addAction(italicAct);
-    formatMenu->addSeparator()->setText(tr("Alignment"));
-    formatMenu->addAction(leftAlignAct);
-    formatMenu->addAction(rightAlignAct);
-    formatMenu->addAction(justifyAct);
-    formatMenu->addAction(centerAct);
-    formatMenu->addSeparator();
-//    formatMenu->addAction(setLineSpacingAct);
-//    formatMenu->addAction(setParagraphSpacingAct);
+    infoLabel->setText(tr("Set English."));
 }
 
-
-void MainWindow::newFile()
+void MainWindow::setLangFinnish()
 {
-    infoLabel->setText(tr("Invoked <b>File|New</b>"));
-}
-
-void MainWindow::open()
-{
-    infoLabel->setText(tr("Invoked <b>File|Open</b>"));
-}
-
-void MainWindow::save()
-{
-    infoLabel->setText(tr("Invoked <b>File|Save</b>"));
-}
-
-void MainWindow::print()
-{
-    infoLabel->setText(tr("Invoked <b>File|Print</b>"));
-}
-
-void MainWindow::undo()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Undo</b>"));
-}
-
-void MainWindow::redo()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Redo</b>"));
-}
-
-void MainWindow::cut()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Cut</b>"));
-}
-
-void MainWindow::copy()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Copy</b>"));
-}
-
-void MainWindow::paste()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Paste</b>"));
-}
-
-void MainWindow::bold()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Bold</b>"));
-}
-
-void MainWindow::italic()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Italic</b>"));
-}
-
-void MainWindow::leftAlign()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Left Align</b>"));
-}
-
-void MainWindow::rightAlign()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Right Align</b>"));
-}
-
-void MainWindow::justify()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Justify</b>"));
-}
-
-void MainWindow::center()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Center</b>"));
-}
-
-void MainWindow::setLineSpacing()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Set Line Spacing</b>"));
-}
-
-void MainWindow::setParagraphSpacing()
-{
-    infoLabel->setText(tr("Invoked <b>Edit|Format|Set Paragraph Spacing</b>"));
+    infoLabel->setText(tr("Set Finnish."));
 }
 
 void MainWindow::about()
 {
     infoLabel->setText(tr("Invoked <b>Help|About</b>"));
-    QMessageBox::about(this, tr("About Menu"),
-            tr("The <b>Menu</b> example shows how to create "
-               "menu-bar menus and context menus."));
-}
-
-void MainWindow::aboutQt()
-{
-    infoLabel->setText(tr("Invoked <b>Help|About Qt</b>"));
+    QMessageBox::about(this,
+            tr("About %1").arg(FunitsSettings::instance()->getAppName()),
+            tr("Put some information here.\n"
+               "This really doesn’t need to be modal."));
 }
