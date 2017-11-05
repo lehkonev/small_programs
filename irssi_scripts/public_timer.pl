@@ -5,7 +5,7 @@
 # ----------------------------------------------------------------------------
 # Environment used to create and test:
 # ...
-# Windows 10 Home 64-bit
+# 2017-11-05: This worked until irssi came out of beta.
 ##############################################################################
 # A simple timer script. Features:
 # * The one running the script is able to use the timer command.
