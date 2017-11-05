@@ -1,5 +1,5 @@
 # Script for word wars (called sanasota in Finnish) (can be edited to be any kind of simple timer).
-# This scripts works in irssi after it came out of beta, but there are other issues with it.
+# This scripts works in irssi after it came out of beta, but there are other issues with it. 
 
 use strict;
 use warnings;

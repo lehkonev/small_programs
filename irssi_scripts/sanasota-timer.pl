@@ -1,4 +1,3 @@
-#
 # This is a simple special-purpose timer for word wars.
 # I don’t remember if this script works.
 
