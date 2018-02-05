@@ -7,7 +7,7 @@ def main():
     while continuing:
         row = input()
 
-        if row =="":
+        if row == "":
             continuing = False
 
         else:
