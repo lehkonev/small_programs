@@ -11,10 +11,13 @@
 # Python 3.5.2
 # Windows 10 Home 64-bit
 ##############################################################################
-# Reads a file (filename defined in conc_file) that defines a concatenation
+# Reads a file (filename defined in CONC_FILE) that defines a concatenation
 # that should be performed on each newline-separated value found in the file
-# defined in input_file.
+# defined in IN_FILE.
 
+CONC_FILE = "specific_concatenator.txt"
+IN_FILE = "specific_concatenator_input.txt"
+OUT_FILE = "specific_concatenator_output.txt"
 ENC = "utf8"
 
 
@@ -98,5 +101,4 @@ def concatenate(concatenations, inputs, variable, separator):
     return separator.join(result_list)
 
 
-#specific_concatenator()
-specific_concatenator("specific_concatenator.txt", "specific_concatenator_input.txt", "specific_concatenator_output.txt")
+specific_concatenator(CONC_FILE, IN_FILE, OUT_FILE)
