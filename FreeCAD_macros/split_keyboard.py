@@ -31,42 +31,43 @@ def main():
     prints("Exiting.")
 
 
-def prints(message):
+def prints(message, indent=0):
+    total_indent = 2 * indent
     # Print to Report view:
-    print(message)
+    print(f"{'':<{total_indent}}{message}")
     # Print to Python console:
-    Gui.doCommand(f"# {message}")
+    Gui.doCommand(f"#> {'':<{total_indent}}{message}")
 
 
 """
 Reads a configuration file.
-Use the directory the script_file is in and the file name in config_file_name.
+Uses the directory the script_file is in and the file name in config_file_name.
 """
 def read_configuration(script_file, config_file_name):
-    prints("    Reading configuration file...")
+    prints("Reading configuration file...", 1)
     directory = os.path.dirname(script_file)
     directory = os.path.abspath(directory) # Fix / vs. \.
     config_file = os.path.join(directory, config_file_name)
-    #prints(f"        TEST: config file: '{config_file}'")
+    prints(f"TEST: config file: '{config_file}'", 2)
     
     if os.path.exists(config_file):
         config = configparser.ConfigParser()
         config.read(config_file)
-        prints("        Success.")
+        prints("Success.", 2)
         return (True, config)
     else:
-        prints(f"        Error: configuration file doesn't exist: '{config_file}'")
+        prints(f"Error: configuration file doesn't exist: '{config_file}'", 2)
         return (False, None)
 
 
 def create_document(document_name):
-    prints("    Creating document in FreeCAD...")
+    prints("Creating document in FreeCAD...", 1)
     if App.activeDocument() and (App.activeDocument().Label == document_name):
-        prints("        Closing existing document of same name.")
+        prints("Closing existing document of same name.", 2)
         App.closeDocument(document_name)
 
     new_document = FreeCAD.newDocument(document_name)
-    prints(f"        Success: created document '{document_name}'.")
+    prints(f"Success: created document '{document_name}'.", 2)
     return (True, new_document)
 
 
