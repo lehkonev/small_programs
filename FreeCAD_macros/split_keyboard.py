@@ -33,25 +33,22 @@ LAYOUT_LEFT = [
 def main():
     prints(f"Hello. Executing file: '{SCRIPT_FILE}'")
 
-    (success, config) = read_configuration(SCRIPT_FILE, CONFIG_FILE_NAME)
-    if success:
-        (success, doc) = create_document(config.get("General", "DOCUMENT_NAME"))
-    if success:
-        (success, switch_hole_list) = create_switch_holes(doc, LAYOUT_LEFT, config, "SwitchHole")
+    config = read_configuration(SCRIPT_FILE, CONFIG_FILE_NAME)
+    doc = create_document(config.get("General", "DOCUMENT_NAME"))
+    switch_hole_list = create_switch_holes(doc, LAYOUT_LEFT, config, "SwitchHole")
 
     # Now that there are objects, adjust the view:
     Gui.activeDocument().activeView().viewIsometric()
     Gui.ActiveDocument.ActiveView.setAxisCross(True)
     Gui.SendMsgToActiveView("ViewFit")
 
-    if success:
-        prints("    TODO: Create top plate.")
-        prints("    TODO: Create bottom plate.")
-        prints("    TODO: Create thumb plates.")
-        prints("    TODO: Create side walls.")
-        prints("    TODO: Create wrist support.")
-        prints("    TODO: Create enclosure that connects the halves.")
-        prints("    TODO: Create and connect the right side.")
+    prints("    TODO: Create top plate.")
+    prints("    TODO: Create bottom plate.")
+    prints("    TODO: Create thumb plates.")
+    prints("    TODO: Create side walls.")
+    prints("    TODO: Create wrist support.")
+    prints("    TODO: Create enclosure that connects the halves.")
+    prints("    TODO: Create and connect the right side.")
 
     prints("Exiting.")
 
@@ -96,14 +93,10 @@ def read_configuration(script_file, config_file_name):
     config_file = os.path.join(directory, config_file_name)
     #prints(f"TEST: config file: '{config_file}'", 2)
 
-    if os.path.exists(config_file):
-        config = configparser.ConfigParser()
-        config.read(config_file)
-        prints("Success.", 2)
-        return (True, config)
-    else:
-        prints(f"Error: configuration file doesn't exist: '{config_file}'", 2)
-        return (False, None)
+    config = configparser.ConfigParser()
+    config.read(config_file)
+    prints("Success.", 2)
+    return config
 
 
 def create_document(document_name):
@@ -114,7 +107,7 @@ def create_document(document_name):
 
     new_document = FreeCAD.newDocument(document_name)
     prints(f"Success: created document '{document_name}'.", 2)
-    return (True, new_document)
+    return new_document
 
 
 def create_switch_holes(doc, layout, config, object_name):
@@ -149,7 +142,7 @@ def create_switch_holes(doc, layout, config, object_name):
     # Recomputing the document needs to be done every now and then.
     doc.recompute()
 
-    return (True, switch_hole_list)
+    return switch_hole_list
 
 
 #--------------------------------------------------------------------------------------------------
