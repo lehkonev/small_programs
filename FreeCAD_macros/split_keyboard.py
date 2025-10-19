@@ -7,6 +7,7 @@ Python version 3.11.
 """
 
 from math import isclose, sqrt
+import BOPTools.JoinFeatures
 import configparser
 import os.path
 
@@ -172,14 +173,37 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
     doc.recompute()
     prints("Created top plate solid from face.", 2)
 
-    #top_plate_template_2 = make_switch_holes(top_plate_template_1, switch_hole_list)
-    prints("TODO: Make switch holes into the top plate.", 2)
+    top_plate_object = make_switch_holes(doc, top_plate_object, switch_hole_list)
+    prints("Made switch holes into the top plate.", 2)
     #rotate_top_plate()
     #top_plate_template_3 = make_left_side_rectangular(top_plate_template_2)
     prints("TODO: Rotate top plate and make left side rectangular.", 2)
     #tilt_raise_top_plate()
     prints("TODO: Tilt and raise top plate.", 2)
     #prints("Success.", 2)
+
+
+def make_switch_holes(doc, base_object, switch_holes):
+    # Group/fuse the switch holes.
+    switches_name = "LeftSwitchHoles"
+    left_switches = doc.addObject("Part::MultiFuse", switches_name)
+    left_switches.Shapes = switch_holes
+
+    doc.recompute()
+
+    # Create a top plate with switch holes by using the old top
+    # plate as a base and the switch holes as a tool for makeCutOut.
+    new_top_plate = BOPTools.JoinFeatures.makeCutout(name=base_object.Name)
+    new_top_plate.Base = base_object
+    new_top_plate.Tool = left_switches
+    new_top_plate.Proxy.execute(new_top_plate)
+    new_top_plate.purgeTouched()
+
+    # Hide the boxes that were switch holes and the old top plate.
+    for obj in new_top_plate.ViewObject.Proxy.claimChildren():
+        obj.ViewObject.hide()
+
+    return new_top_plate
 
 
 """
