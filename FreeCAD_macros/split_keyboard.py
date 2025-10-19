@@ -6,6 +6,7 @@ FreeCAD version 1.0.0.
 Python version 3.11.
 """
 
+from math import isclose, sqrt
 import configparser
 import os.path
 
@@ -28,6 +29,8 @@ LAYOUT_LEFT = [
                                                                 (16, 10.5),
               (11, 10), (12, 10), (13, 10), (14, 10), (15, 10)
 ]
+
+VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 
 
 def main():
@@ -78,6 +81,9 @@ def account_for_kerf(number, kerf, hole=False):
     return kerfed
 
 
+"""
+Formats a vector to be printed (two decimals).
+"""
 def format_vector(vector):
     return f"x: {vector.x:.2f}; y: {vector.y:.2f}; z: {vector.z:.2f}"
 
@@ -152,9 +158,20 @@ def create_switch_holes(doc, layout, config, object_name):
 def create_top_plate(doc, config, switch_hole_list, object_name):
     prints("Creating top plate...", 1)
 
-    corner_switch_holes = find_corners(switch_hole_list)
-    #expanded_corners = expand_corners(corner_coordinate_list, config)
-    #top_plate_template_1 = make_top_plate_template(expanded_corners, config)
+    corners = find_corners(switch_hole_list)
+    prints(f"Found {len(corners)} corners.", 2)
+    top_plate_face = make_face_from_corners(corners)
+    prints("Created top plate face from the corners.", 2)
+    expand_by = get_top_plate_expansion(config)
+    top_plate_face = expand_face(top_plate_face, expand_by)
+    prints(f"Expanded top plate face by {expand_by:.2f} mm.", 2)
+    top_plate_part = top_plate_face.extrude(VECTOR_ONE_Z
+        * float(config.get("Keyboard", "CASE_THICKNESS_MM")))
+    top_plate_object = doc.addObject("Part::Feature", object_name)
+    top_plate_object.Shape = top_plate_part
+    doc.recompute()
+    prints("Created top plate solid from face.", 2)
+
     #top_plate_template_2 = make_switch_holes(top_plate_template_1, switch_hole_list)
     #rotate_top_plate()
     #top_plate_template_3 = make_left_side_rectangular(top_plate_template_2)
@@ -166,12 +183,14 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
 This "finds" the corners from the list of switch holes. It relies on
 the fact that it is known that there are three switches on the left,
 two on the right, five at the bottom and five at the top.
+The corners aren't the exact corners of the individual switch holes
+but their centres of gravity. Since the face made from the corners
+needs to be expanded anyway, the necessary extra offset is included
+when expanding.
 """
 def find_corners(switch_hole_list):
-    prints("Finding corner coordinates...", 2)
-
     # First, make a list of the switch holes sorted by the x coordinate
-    # of their centers of gravity and then their y coordinate.
+    # of their centres of gravity and then the y coordinate.
     switch_holes_sorted_y = sorted(switch_hole_list,
         key=lambda switch: switch.Shape.CenterOfGravity.y)
     switch_holes_sorted_x_y = sorted(switch_holes_sorted_y,
@@ -205,12 +224,87 @@ def find_corners(switch_hole_list):
     # corners H, I, J, K, L, M, N, O in README.md.
     corner_switch_holes = [top_left_corner, top_right_corner, right_top_corner, right_bottom_corner,
         bottom_right_corner, bottom_left_corner, left_bottom_corner, left_top_corner]
-    #prints(f"TEST: Corner switch holes:", 3)
-    #for switch_hole in corner_switches:
-        #prints(f"TEST: {switch_hole.Name}: {format_vector(switch_hole.Shape.CenterOfGravity)}", 4)
 
-    prints(f"Success: found {len(corner_switch_holes)} corners.", 3)
-    return corner_switch_holes
+    corners = []
+    for switch_hole in corner_switch_holes:
+        corner_coord = switch_hole.Shape.CenterOfGravity
+        # Z should be 0 here.
+        corner_coord.z = 0.0
+        corners.append(corner_coord)
+        #prints(f"TEST: corner: {switch_hole.Name}: {format_vector(corner_coord)}", 3)
+    return corners
+
+
+def make_face_from_corners(corners):
+    # Create lines and then edges from the corners.
+    edges = []
+    # An edge between the last and first corner is also needed,
+    # so start with the last corner.
+    previous_corner = corners[len(corners) - 1]
+    for corner in corners:
+        line = Part.LineSegment(previous_corner, corner)
+        edge = Part.Edge(line)
+        edges.append(edge)
+        previous_corner = corner
+    #prints(f"TEST: Created {len(edges)} edges.", 3)
+
+    # Make the edges into a (closed) wire.
+    wire = Part.Wire(edges)
+    if not wire.isClosed():
+        # FreeCAD sometimes fails to close the wire.
+        raise Exception("Error: wire is not closed. Retry?")
+
+    # Make the wire into a face.
+    face = Part.Face(wire)
+
+    return face
+
+
+"""
+Since the top plate's corners are the centres of gravity of the
+switch holes, the top plate face needs to be expanded by:
+  1) half the hypotenuse of a switch face,
+  2) at least the thickness of the material for integrity,
+  3) at least the thickness of the material again to account
+     for finger joining the laser-cut parts,
+  4) any wanted extra and
+  5) half the kerf.
+"""
+def get_top_plate_expansion(config):
+    switch_len_x = float(config.get("Keyboard", "SWITCH_LENGTH_X_MM"))
+    switch_len_y = float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM"))
+    switch_hypotenuse = sqrt(switch_len_x**2 + switch_len_y**2)
+    #prints(f"TEST: switch hypotenuse: {switch_hypotenuse:.2f}.", 2)
+    expand_by = (switch_hypotenuse/2.0
+        + 2.0*float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+        + float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+        + float(config.get("Keyboard", "PLATE_EXTRA_MM")))
+    #prints(f"TEST: expand_by: {expand_by:.2f}.", 2)
+    return expand_by
+
+
+"""
+Expands a face sideways.
+"""
+def expand_face(face, expand_by):
+    # From official docs:
+    #   join: method of offsetting non-tangent joints. 0 = arcs,
+    #     1 = tangent, 2 = intersection.
+    #   fill: if true, the output is a face filling the space covered
+    #     by offset. If false, the output is a wire.
+    #   openResult: affects the way open wires are processed. If False,
+    #     an open wire is made. If True, a closed wire is made from a
+    #     double-sided offset, with rounds around open vertices.
+    #   intersection: affects the way compounds are processed. If
+    #     False, all children are offset independently. If True, and
+    #     children are edges/wires, the children are offset in a
+    #     collective manner. If compounding is nested, collectiveness
+    #     does not spread across compounds (only direct children of a
+    #     compound are taken collectively).
+    offset_wire = face.makeOffset2D(offset=expand_by, join=2, fill=False,
+        openResult = True, intersection = True)
+    offset_face = Part.Face(offset_wire)
+    return offset_face
 
 
 #----------------------------------------------------------------------x---------------------------
