@@ -42,7 +42,7 @@ def main():
     Gui.ActiveDocument.ActiveView.setAxisCross(True)
     Gui.SendMsgToActiveView("ViewFit")
 
-    prints("    TODO: Create top plate.")
+    create_top_plate(doc, config, switch_hole_list, "TopPlate")
     prints("    TODO: Create bottom plate.")
     prints("    TODO: Create thumb plates.")
     prints("    TODO: Create side walls.")
@@ -53,7 +53,7 @@ def main():
     prints("Exiting.")
 
 
-#--------------------------------------------------------------------------------------------------
+#----------------------------------------------------------------------x---------------------------
 # Utility functions.
 
 
@@ -78,7 +78,11 @@ def account_for_kerf(number, kerf, hole=False):
     return kerfed
 
 
-#--------------------------------------------------------------------------------------------------
+def format_vector(vector):
+    return f"x: {vector.x:.2f}; y: {vector.y:.2f}; z: {vector.z:.2f}"
+
+
+#----------------------------------------------------------------------x---------------------------
 # Other functions.
 
 
@@ -125,7 +129,7 @@ def create_switch_holes(doc, layout, config, object_name):
         switch_object.Shape = Part.makeBox(
             account_for_kerf(config.get("Keyboard", "SWITCH_LENGTH_X_MM"), kerf, hole=True),
             account_for_kerf(config.get("Keyboard", "SWITCH_LENGTH_Y_MM"), kerf, hole=True),
-            account_for_kerf(config.get("Keyboard", "CASE_THICKNESS_MM"), kerf, hole=True))
+            float(config.get("Keyboard", "CASE_THICKNESS_MM")))
 
         # Calculate switch's place:
         (placement_x, placement_y) = coordinate
@@ -145,7 +149,71 @@ def create_switch_holes(doc, layout, config, object_name):
     return switch_hole_list
 
 
-#--------------------------------------------------------------------------------------------------
+def create_top_plate(doc, config, switch_hole_list, object_name):
+    prints("Creating top plate...", 1)
+
+    corner_switch_holes = find_corners(switch_hole_list)
+    #expanded_corners = expand_corners(corner_coordinate_list, config)
+    #top_plate_template_1 = make_top_plate_template(expanded_corners, config)
+    #top_plate_template_2 = make_switch_holes(top_plate_template_1, switch_hole_list)
+    #rotate_top_plate()
+    #top_plate_template_3 = make_left_side_rectangular(top_plate_template_2)
+    #tilt_raise_top_plate()
+    #prints("Success.", 2)
+
+
+"""
+This "finds" the corners from the list of switch holes. It relies on
+the fact that it is known that there are three switches on the left,
+two on the right, five at the bottom and five at the top.
+"""
+def find_corners(switch_hole_list):
+    prints("Finding corner coordinates...", 2)
+
+    # First, make a list of the switch holes sorted by the x coordinate
+    # of their centers of gravity and then their y coordinate.
+    switch_holes_sorted_y = sorted(switch_hole_list,
+        key=lambda switch: switch.Shape.CenterOfGravity.y)
+    switch_holes_sorted_x_y = sorted(switch_holes_sorted_y,
+        key=lambda switch: switch.Shape.CenterOfGravity.x)
+    #prints(f"TEST: Sorted by x, then y:", 3)
+    #for switch_hole in switch_holes_sorted_x_y:
+        #prints(f"TEST: {switch_hole.Name}: {format_vector(switch_hole.Shape.CenterOfGravity)}", 4)
+
+    # The three first switch holes in the list are the leftmost ones
+    # and the two last ones are the rightmost ones.
+    left_bottom_corner = switch_holes_sorted_x_y[0]
+    left_top_corner = switch_holes_sorted_x_y[2]
+    right_bottom_corner = switch_holes_sorted_x_y[35]
+    right_top_corner = switch_holes_sorted_x_y[36]
+
+    # Sort by y again to get list sorted by y and then x.
+    switch_holes_sorted_y_x = sorted(switch_holes_sorted_x_y,
+        key=lambda switch: switch.Shape.CenterOfGravity.y)
+    #prints(f"TEST: Sorted by y, then x:", 3)
+    #for switch_hole in switch_holes_sorted_y_x:
+        #prints(f"TEST: {switch_hole.Name}: {format_vector(switch_hole.Shape.CenterOfGravity)}", 4)
+
+    # The first five switch holes are the bottom ones and the five
+    # last ones are the top ones.
+    bottom_left_corner = switch_holes_sorted_y_x[0]
+    bottom_right_corner = switch_holes_sorted_y_x[4]
+    top_left_corner = switch_holes_sorted_y_x[32]
+    top_right_corner = switch_holes_sorted_y_x[36]
+
+    # Put the corner switch holes in order, same as
+    # corners H, I, J, K, L, M, N, O in README.md.
+    corner_switch_holes = [top_left_corner, top_right_corner, right_top_corner, right_bottom_corner,
+        bottom_right_corner, bottom_left_corner, left_bottom_corner, left_top_corner]
+    #prints(f"TEST: Corner switch holes:", 3)
+    #for switch_hole in corner_switches:
+        #prints(f"TEST: {switch_hole.Name}: {format_vector(switch_hole.Shape.CenterOfGravity)}", 4)
+
+    prints(f"Success: found {len(corner_switch_holes)} corners.", 3)
+    return corner_switch_holes
+
+
+#----------------------------------------------------------------------x---------------------------
 
 
 main()

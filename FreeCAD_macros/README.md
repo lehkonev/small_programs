@@ -30,3 +30,42 @@ That is, `split_keyboard.py`.
 
 - There are a lot of simple comments since this is a First Project.
 - I haven't personally tested it, but the laser cutter I'll use apparently has a kerf of 0.1 mm. Simplified, kerf is the width of the hole that is created when the laser burns away material.
+
+### The Shape
+
+Top plate switch places, 37 pieces (with corners H, I, J, K, L, M, N, O):
+```
+       H              I
+5       [] [] [] [] []
+1   O                  []
+7    [] [] [] [] [] []    []   J
+2                      []    []
+7    [] [] [] [] [] []    []
+2                      []    []
+7    [] [] [] [] [] []    []   K
+1   N                  []
+5       [] [] [] [] []
+       M              L
+```
+
+Top plate, rotated conveniently (switches are marked with `o`; A–F are corners; sides a, b, c, d, e, f are all supposed to be straight):
+```
+ A              a              B
+    __________________________
+   |               o  o  o  o \
+   |            o              |  b
+   |         o      o  o  o  o \
+   |      o      o             / C
+   |   o      o      o  o  o  /
+   |       o      o          /
+f  |    o      o      o  o  /  c
+   | o      o      o       /
+   |     o      o      o _/
+   |  o      o      o __/  D
+   |      o      o __/
+   |   o      o __/
+   |       o __/     d
+   |________/
+ F           E
+       e
+```
