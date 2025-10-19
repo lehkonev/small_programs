@@ -46,12 +46,12 @@ def main():
     Gui.SendMsgToActiveView("ViewFit")
 
     create_top_plate(doc, config, switch_hole_list, "TopPlate")
-    prints("    TODO: Create bottom plate.")
-    prints("    TODO: Create thumb plates.")
-    prints("    TODO: Create side walls.")
-    prints("    TODO: Create wrist support.")
-    prints("    TODO: Create enclosure that connects the halves.")
-    prints("    TODO: Create and connect the right side.")
+    prints("TODO: Create bottom plate.", 1)
+    prints("TODO: Create thumb plates.", 1)
+    prints("TODO: Create side walls.", 1)
+    prints("TODO: Create wrist support.", 1)
+    prints("TODO: Create enclosure that connects the halves.", 1)
+    prints("TODO: Create and connect the right side.", 1)
 
     prints("Exiting.")
 
@@ -173,9 +173,12 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
     prints("Created top plate solid from face.", 2)
 
     #top_plate_template_2 = make_switch_holes(top_plate_template_1, switch_hole_list)
+    prints("TODO: Make switch holes into the top plate.", 2)
     #rotate_top_plate()
     #top_plate_template_3 = make_left_side_rectangular(top_plate_template_2)
+    prints("TODO: Rotate top plate and make left side rectangular.", 2)
     #tilt_raise_top_plate()
+    prints("TODO: Tilt and raise top plate.", 2)
     #prints("Success.", 2)
 
 
