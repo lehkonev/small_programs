@@ -148,11 +148,10 @@ def create_switch_holes(doc, layout, config, object_name):
         switch_hole_list.append(switch_object)
         i = i + 1
 
-    prints(f"Success: created {i} switch holes.", 2)
-
     # Recomputing the document needs to be done every now and then.
     doc.recompute()
 
+    prints(f"Success: created {i} switch holes.", 2)
     return switch_hole_list
 
 
@@ -185,29 +184,6 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
     #tilt_raise_top_plate()
     prints("TODO: Tilt and raise top plate.", 2)
     #prints("Success.", 2)
-
-
-def make_switch_holes(doc, base_object, switch_holes):
-    # Group/fuse the switch holes.
-    switches_name = "LeftSwitchHoles"
-    left_switches = doc.addObject("Part::MultiFuse", switches_name)
-    left_switches.Shapes = switch_holes
-
-    doc.recompute()
-
-    # Create a top plate with switch holes by using the old top
-    # plate as a base and the switch holes as a tool for makeCutOut.
-    new_top_plate = BOPTools.JoinFeatures.makeCutout(name=base_object.Name)
-    new_top_plate.Base = base_object
-    new_top_plate.Tool = left_switches
-    new_top_plate.Proxy.execute(new_top_plate)
-    new_top_plate.purgeTouched()
-
-    # Hide the boxes that were switch holes and the old top plate.
-    for obj in new_top_plate.ViewObject.Proxy.claimChildren():
-        obj.ViewObject.hide()
-
-    return new_top_plate
 
 
 """
@@ -287,7 +263,6 @@ def make_face_from_corners(corners):
 
     # Make the wire into a face.
     face = Part.Face(wire)
-
     return face
 
 
@@ -336,6 +311,29 @@ def expand_face(face, expand_by):
         openResult = True, intersection = True)
     offset_face = Part.Face(offset_wire)
     return offset_face
+
+
+def make_switch_holes(doc, base_object, switch_holes):
+    # Group/fuse the switch holes.
+    switches_name = "LeftSwitchHoles"
+    left_switches = doc.addObject("Part::MultiFuse", switches_name)
+    left_switches.Shapes = switch_holes
+
+    doc.recompute()
+
+    # Create a top plate with switch holes by using the old top
+    # plate as a base and the switch holes as a tool for makeCutOut.
+    new_top_plate = BOPTools.JoinFeatures.makeCutout(name=base_object.Name)
+    new_top_plate.Base = base_object
+    new_top_plate.Tool = left_switches
+    new_top_plate.Proxy.execute(new_top_plate)
+    new_top_plate.purgeTouched()
+
+    # Hide the boxes that were switch holes and the old top plate.
+    for obj in new_top_plate.ViewObject.Proxy.claimChildren():
+        obj.ViewObject.hide()
+
+    return new_top_plate
 
 
 def rotate_top_plate(top_plate_object, config):
