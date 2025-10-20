@@ -58,7 +58,7 @@ def main():
 
 
 #----------------------------------------------------------------------x---------------------------
-# Utility functions.
+# Printing and formatting utility functions.
 
 
 def prints(message, indent=0):
@@ -67,6 +67,31 @@ def prints(message, indent=0):
     print(f"{'':<{total_indent}}{message}")
     # Print to Python console:
     Gui.doCommand(f"#> {'':<{total_indent}}{message}")
+
+
+"""
+Formats a vector to be printed (two decimals).
+"""
+def format_vector(vector):
+    return f"x: {vector.x:.2f}; y: {vector.y:.2f}; z: {vector.z:.2f}"
+
+
+"""
+Formats a vertex to be printed (two decimals).
+"""
+def format_vertex(vertex):
+    return f"x: {vertex.X:.2f}; y: {vertex.Y:.2f}; z: {vertex.Z:.2f}"
+
+
+def format_vertices(vertices):
+    str_vertices = []
+    for v in vertices:
+        str_vertices.append(f"({v.X:.2f}, {v.Y:.2f}, {v.Z:.2f})")
+    return str_vertices
+
+
+#----------------------------------------------------------------------x---------------------------
+# Conversion and calculation utility functions.
 
 
 """
@@ -82,11 +107,98 @@ def account_for_kerf(number, kerf, hole=False):
     return kerfed
 
 
-"""
-Formats a vector to be printed (two decimals).
-"""
-def format_vector(vector):
-    return f"x: {vector.x:.2f}; y: {vector.y:.2f}; z: {vector.z:.2f}"
+def vector_to_vertex(vector):
+    return Part.Vertex(vector.x, vector.y, vector.z)
+
+
+def vertex_to_vector(vertex):
+    return FreeCAD.Vector(vertex.X, vertex.Y, vertex.Z)
+
+
+def vertices_to_vectors(vertices):
+    vectors = []
+    for vertex in vertices:
+        vectors.append(vertex_to_vector(vertex))
+    return vectors
+
+
+#----------------------------------------------------------------------x---------------------------
+# FreeCAD utility functions.
+
+
+def get_long_edges(object, longer_than):
+    if (longer_than < 0) or isclose(longer_than, 0.0):
+        raise Exception("Error: edge length comparison value has to be greater than 0.")
+
+    long_edges = []
+    i = 1
+    for edge in object.Shape.Edges:
+        if (edge.Length < 0) or isclose(edge.Length, 0.0):
+            raise Exception("Error: invalid edge length: {edge.Length}.")
+
+        if (edge.Length > longer_than) and (not isclose(edge.Length, longer_than)):
+            #prints(f"TEST: edge {i} p0: {format_vertex(edge.Vertexes[0])}", 4)
+            #prints(f"TEST: edge {i} p1: {format_vertex(edge.Vertexes[1])}", 4)
+            i = i + 1
+            long_edges.append(edge)
+
+    return long_edges
+
+
+def get_mins_maxes_from_vertices(vertices):
+    min_x = None
+    min_y = None
+    min_z = None
+    max_x = None
+    max_y = None
+    max_z = None
+
+    for vertex in vertices:
+        if min_x is None:
+            min_x = vertex.X
+            min_y = vertex.Y
+            min_z = vertex.Z
+            max_x = vertex.X
+            max_y = vertex.Y
+            max_z = vertex.Z
+        else:
+            min_x = min(min_x, vertex.X)
+            min_y = min(min_y, vertex.Y)
+            min_z = min(min_z, vertex.Z)
+            max_x = max(max_x, vertex.X)
+            max_y = max(max_y, vertex.Y)
+            max_z = max(max_z, vertex.Z)
+
+    return (min_x, min_y, min_z, max_x, max_y, max_z)
+
+
+def get_rim_vertices(rim_edges):
+    rim_vertices = []
+    for edge in rim_edges:
+        for vertex in edge.Vertexes:
+            # Find unique vertices of the rim of object.
+            found_same = False
+            for v in rim_vertices:
+                if isclose(vertex.X, v.X) and isclose(vertex.Y, v.Y) and isclose(vertex.Z, v.Z):
+                    found_same = True
+                    break
+            if not found_same:
+                rim_vertices.append(vertex)
+                #prints(f"TEST: new rim vertex: {format_vertex(vertex)}", 4)
+
+    return rim_vertices
+
+
+def hide_children(object):
+    for child in object.ViewObject.Proxy.claimChildren():
+        child.ViewObject.hide()
+
+
+def make_solid_from_face(doc, face, extrude_vector, object_name):
+    new_part = face.extrude(extrude_vector)
+    new_object = doc.addObject("Part::Feature", object_name)
+    new_object.Shape = new_part
+    return new_object
 
 
 #----------------------------------------------------------------------x---------------------------
@@ -165,22 +277,20 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
     expand_by = get_top_plate_expansion(config)
     top_plate_face = expand_face(top_plate_face, expand_by)
     prints(f"Expanded top plate face by {expand_by:.2f} mm.", 2)
-    top_plate_part = top_plate_face.extrude(VECTOR_ONE_Z
-        * float(config.get("Keyboard", "CASE_THICKNESS_MM")))
-    top_plate_object = doc.addObject("Part::Feature", object_name)
-    top_plate_object.Shape = top_plate_part
-    doc.recompute()
+    extrude_vector = VECTOR_ONE_Z * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    top_plate_object = make_solid_from_face(doc, top_plate_face, extrude_vector, object_name)
     prints("Created top plate solid from face.", 2)
+    doc.recompute()
 
     top_plate_object = make_switch_holes(doc, top_plate_object, switch_hole_list)
     prints("Made switch holes into the top plate.", 2)
-
     layout_angle = rotate_top_plate(top_plate_object, config)
     prints(f"Rotated top plate {layout_angle:.2f} degrees.", 2)
     doc.recompute()
 
-    #top_plate_template_3 = make_left_side_rectangular(top_plate_template_2)
-    prints("TODO: Make left side rectangular.", 2)
+    top_plate_object = make_left_side_rectangular(doc, top_plate_object, config)
+    prints("Made left side rectangular.", 2)
+    doc.recompute()
     #tilt_raise_top_plate()
     prints("TODO: Tilt and raise top plate.", 2)
     #prints("Success.", 2)
@@ -243,12 +353,16 @@ def find_corners(switch_hole_list):
 
 
 def make_face_from_corners(corners):
+    if len(corners) < 3:
+        raise Exception("Error: need at least three corners to make a face.")
+
     # Create lines and then edges from the corners.
     edges = []
     # An edge between the last and first corner is also needed,
     # so start with the last corner.
     previous_corner = corners[len(corners) - 1]
     for corner in corners:
+        #prints(f"TEST: edge from {format_vector(previous_corner)} to {format_vector(corner)}.", 3)
         line = Part.LineSegment(previous_corner, corner)
         edge = Part.Edge(line)
         edges.append(edge)
@@ -290,7 +404,7 @@ def get_top_plate_expansion(config):
 
 
 """
-Expands a face sideways.
+Expands a face sideways (parallel to the face).
 """
 def expand_face(face, expand_by):
     # From official docs:
@@ -330,8 +444,7 @@ def make_switch_holes(doc, base_object, switch_holes):
     new_top_plate.purgeTouched()
 
     # Hide the boxes that were switch holes and the old top plate.
-    for obj in new_top_plate.ViewObject.Proxy.claimChildren():
-        obj.ViewObject.hide()
+    hide_children(new_top_plate)
 
     return new_top_plate
 
@@ -353,6 +466,84 @@ def rotate_top_plate(top_plate_object, config):
         rotation,
         centre)
     return layout_angle
+
+
+"""
+Makes the left side of the top plate rectangular by creating filler
+solids. Or, stretches the corners with smallest x coordinates to the
+minimum x coordinate.
+"""
+def make_left_side_rectangular(doc, top_plate_object, config):
+    vertices = get_vertices_of_rectangular_extension(top_plate_object, config)
+    left_rectangle_face = make_face_from_corners(vertices_to_vectors(vertices))
+    extrude_vector = VECTOR_ONE_Z * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    left_rectangle_name = f"{top_plate_object.Name}_extension"
+    left_rectangle_object = make_solid_from_face(
+        doc, left_rectangle_face, extrude_vector, left_rectangle_name)
+    doc.recompute()
+    # NOTE: left_rectangle_object seems to have a missing part,
+    # but when fused below, the problem disappears.
+
+    # Combine the left side with the existing top plate.
+    new_top_plate_object = BOPTools.JoinFeatures.makeConnect(name=top_plate_object.Name)
+    new_top_plate_object.Objects = [top_plate_object, left_rectangle_object]
+    new_top_plate_object.Proxy.execute(new_top_plate_object)
+    new_top_plate_object.purgeTouched()
+    hide_children(new_top_plate_object)
+
+    return new_top_plate_object
+
+
+def get_vertices_of_rectangular_extension(top_plate_object, config):
+    # Find the long edges of the top plate.
+    longer_than = max(
+        float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
+        float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
+    long_edges = get_long_edges(top_plate_object, longer_than)
+    #prints(f"TEST: found {len(long_edges)} long edges.", 3)
+
+    # Half of the edges are from the bottom of the top plate and half
+    # from the top (z coordinate is 0.0 or 3.0 and otherwise they're
+    # the same). Filter out the ones with larger z.
+    long_edges = list(filter(lambda e: isclose(e.Vertexes[0].Z, 0.0), long_edges))
+    #prints(f"TEST: long edge zs: {[float('%.02f' % e.Vertexes[0].Z) for e in long_edges]}", 3)
+
+    rim_vertices = get_rim_vertices(long_edges)
+    #prints(f"TEST: rim vertices: {format_vertices(rim_vertices)}", 3)
+
+    (min_x, min_y, min_z, max_x, max_y, max_z) = get_mins_maxes_from_vertices(rim_vertices)
+    #prints(f"TEST: min_x: {min_x:.2f}; min_y: {min_y:.2f}; min_z: {min_z:.2f}")
+    #prints(f"TEST: max_x: {max_x:.2f}; max_y: {max_y:.2f}; max_z: {max_z:.2f}")
+
+    # There are two vertices with max_y, and the one with the
+    # smaller x is the rightmost vertex that is needed.
+    vertices_y_max = list(filter(lambda r: isclose(r.Y, max_y), rim_vertices))
+    #prints(f"TEST: vertices with y_max: {format_vertices(vertices_y_max)}", 3)
+    if len(vertices_y_max) != 2:
+        raise Exception(f"Error: found {len(vertices_y_max)} max y vertices (should be two).")
+
+    top_right_corner = vertices_y_max[0]
+    if vertices_y_max[1].X < top_right_corner.X:
+        top_right_corner = vertices_y_max[1]
+    #prints(f"TEST: top right corner: {format_vertex(top_right_corner)}", 3)
+
+    # The top right corner and all vertices to the left of it (so
+    # with smaller x) are needed to remodel the top plate.
+    corner_x = top_right_corner.X
+    vertices = list(filter(lambda v: (v.X < corner_x) or isclose(v.X, corner_x), rim_vertices))
+    #prints(f"TEST: vertices: {format_vertices(vertices)}", 3)
+    vertices.sort(key=lambda v: v.Y)
+    #prints(f"TEST: vertices sorted: {format_vertices(vertices)}", 3)
+
+    # Add the corners that make the left side rectangular:
+    vertices.append(Part.Vertex(min_x, max_y, min_z))
+    vertices.append(Part.Vertex(min_x, min_y, min_z))
+    #prints(f"TEST: vertices complete: {format_vertices(vertices)}", 3)
+
+    if len(vertices) != 7:
+        raise Exception(f"Error: got {len(vertices)} vertices (should be seven).")
+
+    return vertices
 
 
 #----------------------------------------------------------------------x---------------------------
