@@ -39,6 +39,7 @@ def main():
 
     config = read_configuration(SCRIPT_FILE, CONFIG_FILE_NAME)
     doc = create_document(config.get("General", "DOCUMENT_NAME"))
+
     switch_hole_list = create_switch_holes(doc, LAYOUT_LEFT, config, "SwitchHole")
 
     # Now that there are objects, adjust the view:
@@ -55,6 +56,34 @@ def main():
     prints("TODO: Create and connect the right side.", 1)
 
     prints("Exiting.")
+
+
+"""
+Reads a configuration file.
+Uses the directory the script_file is in and the file name in config_file_name.
+"""
+def read_configuration(script_file, config_file_name):
+    prints("Reading configuration file...", 1)
+    directory = os.path.dirname(script_file)
+    directory = os.path.abspath(directory) # Fix / vs. \.
+    config_file = os.path.join(directory, config_file_name)
+    #prints(f"TEST: config file: '{config_file}'", 2)
+
+    config = configparser.ConfigParser()
+    config.read(config_file)
+    prints("Success.", 2)
+    return config
+
+
+def create_document(document_name):
+    prints("Creating document in FreeCAD...", 1)
+    if App.activeDocument() and (App.activeDocument().Label == document_name):
+        prints("Closing existing document of same name.", 2)
+        App.closeDocument(document_name)
+
+    new_document = FreeCAD.newDocument(document_name)
+    prints(f"Success: created document '{document_name}'.", 2)
+    return new_document
 
 
 #----------------------------------------------------------------------x---------------------------
@@ -126,6 +155,30 @@ def vertices_to_vectors(vertices):
 # FreeCAD utility functions.
 
 
+"""
+Expands a face sideways (parallel to the face).
+"""
+def expand_face(face, expand_by):
+    # From official docs:
+    #   join: method of offsetting non-tangent joints. 0 = arcs,
+    #     1 = tangent, 2 = intersection.
+    #   fill: if true, the output is a face filling the space covered
+    #     by offset. If false, the output is a wire.
+    #   openResult: affects the way open wires are processed. If False,
+    #     an open wire is made. If True, a closed wire is made from a
+    #     double-sided offset, with rounds around open vertices.
+    #   intersection: affects the way compounds are processed. If
+    #     False, all children are offset independently. If True, and
+    #     children are edges/wires, the children are offset in a
+    #     collective manner. If compounding is nested, collectiveness
+    #     does not spread across compounds (only direct children of a
+    #     compound are taken collectively).
+    offset_wire = face.makeOffset2D(offset=expand_by, join=2, fill=False,
+        openResult = True, intersection = True)
+    offset_face = Part.Face(offset_wire)
+    return offset_face
+
+
 def get_long_edges(object, longer_than):
     if (longer_than < 0) or isclose(longer_than, 0.0):
         raise Exception("Error: edge length comparison value has to be greater than 0.")
@@ -194,6 +247,34 @@ def hide_children(object):
         child.ViewObject.hide()
 
 
+def make_face_from_corners(corners):
+    if len(corners) < 3:
+        raise Exception("Error: need at least three corners to make a face.")
+
+    # Create lines and then edges from the corners.
+    edges = []
+    # An edge between the last and first corner is also needed,
+    # so start with the last corner.
+    previous_corner = corners[len(corners) - 1]
+    for corner in corners:
+        #prints(f"TEST: edge from {format_vector(previous_corner)} to {format_vector(corner)}.", 3)
+        line = Part.LineSegment(previous_corner, corner)
+        edge = Part.Edge(line)
+        edges.append(edge)
+        previous_corner = corner
+    #prints(f"TEST: Created {len(edges)} edges.", 3)
+
+    # Make the edges into a (closed) wire.
+    wire = Part.Wire(edges)
+    if not wire.isClosed():
+        # FreeCAD sometimes fails to close the wire.
+        raise Exception("Error: wire is not closed. Retry?")
+
+    # Make the wire into a face.
+    face = Part.Face(wire)
+    return face
+
+
 def make_solid_from_face(doc, face, extrude_vector, object_name):
     new_part = face.extrude(extrude_vector)
     new_object = doc.addObject("Part::Feature", object_name)
@@ -202,35 +283,7 @@ def make_solid_from_face(doc, face, extrude_vector, object_name):
 
 
 #----------------------------------------------------------------------x---------------------------
-# Other functions.
-
-
-"""
-Reads a configuration file.
-Uses the directory the script_file is in and the file name in config_file_name.
-"""
-def read_configuration(script_file, config_file_name):
-    prints("Reading configuration file...", 1)
-    directory = os.path.dirname(script_file)
-    directory = os.path.abspath(directory) # Fix / vs. \.
-    config_file = os.path.join(directory, config_file_name)
-    #prints(f"TEST: config file: '{config_file}'", 2)
-
-    config = configparser.ConfigParser()
-    config.read(config_file)
-    prints("Success.", 2)
-    return config
-
-
-def create_document(document_name):
-    prints("Creating document in FreeCAD...", 1)
-    if App.activeDocument() and (App.activeDocument().Label == document_name):
-        prints("Closing existing document of same name.", 2)
-        App.closeDocument(document_name)
-
-    new_document = FreeCAD.newDocument(document_name)
-    prints(f"Success: created document '{document_name}'.", 2)
-    return new_document
+# The functions that create the top plate.
 
 
 def create_switch_holes(doc, layout, config, object_name):
@@ -352,34 +405,6 @@ def find_corners(switch_hole_list):
     return corners
 
 
-def make_face_from_corners(corners):
-    if len(corners) < 3:
-        raise Exception("Error: need at least three corners to make a face.")
-
-    # Create lines and then edges from the corners.
-    edges = []
-    # An edge between the last and first corner is also needed,
-    # so start with the last corner.
-    previous_corner = corners[len(corners) - 1]
-    for corner in corners:
-        #prints(f"TEST: edge from {format_vector(previous_corner)} to {format_vector(corner)}.", 3)
-        line = Part.LineSegment(previous_corner, corner)
-        edge = Part.Edge(line)
-        edges.append(edge)
-        previous_corner = corner
-    #prints(f"TEST: Created {len(edges)} edges.", 3)
-
-    # Make the edges into a (closed) wire.
-    wire = Part.Wire(edges)
-    if not wire.isClosed():
-        # FreeCAD sometimes fails to close the wire.
-        raise Exception("Error: wire is not closed. Retry?")
-
-    # Make the wire into a face.
-    face = Part.Face(wire)
-    return face
-
-
 """
 Since the top plate's corners are the centres of gravity of the
 switch holes, the top plate face needs to be expanded by:
@@ -401,30 +426,6 @@ def get_top_plate_expansion(config):
         + float(config.get("Keyboard", "PLATE_EXTRA_MM")))
     #prints(f"TEST: expand_by: {expand_by:.2f}.", 2)
     return expand_by
-
-
-"""
-Expands a face sideways (parallel to the face).
-"""
-def expand_face(face, expand_by):
-    # From official docs:
-    #   join: method of offsetting non-tangent joints. 0 = arcs,
-    #     1 = tangent, 2 = intersection.
-    #   fill: if true, the output is a face filling the space covered
-    #     by offset. If false, the output is a wire.
-    #   openResult: affects the way open wires are processed. If False,
-    #     an open wire is made. If True, a closed wire is made from a
-    #     double-sided offset, with rounds around open vertices.
-    #   intersection: affects the way compounds are processed. If
-    #     False, all children are offset independently. If True, and
-    #     children are edges/wires, the children are offset in a
-    #     collective manner. If compounding is nested, collectiveness
-    #     does not spread across compounds (only direct children of a
-    #     compound are taken collectively).
-    offset_wire = face.makeOffset2D(offset=expand_by, join=2, fill=False,
-        openResult = True, intersection = True)
-    offset_face = Part.Face(offset_wire)
-    return offset_face
 
 
 def make_switch_holes(doc, base_object, switch_holes):
