@@ -6,7 +6,7 @@ FreeCAD version 1.0.0.
 Python version 3.11.
 """
 
-from math import isclose, sqrt
+from math import atan, degrees, isclose, sqrt
 import BOPTools.JoinFeatures
 import configparser
 import os.path
@@ -175,9 +175,13 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
 
     top_plate_object = make_switch_holes(doc, top_plate_object, switch_hole_list)
     prints("Made switch holes into the top plate.", 2)
-    #rotate_top_plate()
+
+    layout_angle = rotate_top_plate(top_plate_object, config)
+    prints(f"Rotated top plate {layout_angle:.2f} degrees.", 2)
+    doc.recompute()
+
     #top_plate_template_3 = make_left_side_rectangular(top_plate_template_2)
-    prints("TODO: Rotate top plate and make left side rectangular.", 2)
+    prints("TODO: Make left side rectangular.", 2)
     #tilt_raise_top_plate()
     prints("TODO: Tilt and raise top plate.", 2)
     #prints("Success.", 2)
@@ -332,6 +336,25 @@ def expand_face(face, expand_by):
         openResult = True, intersection = True)
     offset_face = Part.Face(offset_wire)
     return offset_face
+
+
+def rotate_top_plate(top_plate_object, config):
+    # Rotate top plate so that the side between top right corner and
+    # right top corner (side b in README.md) is horizontal and at top.
+    layout_angle = degrees(atan(
+        float(config.get("Keyboard", "SWITCH_DISTANCE_Y_MM"))
+        / (2.0*float(config.get("Keyboard", "SWITCH_DISTANCE_X_MM")))
+        ))
+    position = top_plate_object.Placement.Base
+    # Rotate along z-axis (yaw).
+    rotation = FreeCAD.Rotation(layout_angle, 0.0, 0.0) # Yaw, pitch, roll.
+    # Rotate through centre so the object isn't too displaced.
+    centre = top_plate_object.Shape.CenterOfGravity
+    top_plate_object.Placement = FreeCAD.Placement(
+        position,
+        rotation,
+        centre)
+    return layout_angle
 
 
 #----------------------------------------------------------------------x---------------------------
