@@ -47,8 +47,8 @@ def main():
     Gui.ActiveDocument.ActiveView.setAxisCross(True)
     Gui.SendMsgToActiveView("ViewFit")
 
-    create_top_plate(doc, config, switch_hole_list, "TopPlate")
-    prints("TODO: Create bottom plate.", 1)
+    top_plate = create_top_plate(doc, config, switch_hole_list, "TopPlate")
+    bottom_plate = create_bottom_plate(doc, config, top_plate, "BottomPlate")
     prints("TODO: Create thumb plates.", 1)
     prints("TODO: Create side walls.", 1)
     prints("TODO: Create wrist support.", 1)
@@ -103,6 +103,13 @@ Formats a vector to be printed (two decimals).
 """
 def format_vector(vector):
     return f"x: {vector.x:.2f}; y: {vector.y:.2f}; z: {vector.z:.2f}"
+
+
+def format_vectors(vectors):
+    str_vectors = []
+    for v in vectors:
+        str_vectors.append(f"({v.x:.2f}, {v.y:.2f}, {v.z:.2f})")
+    return str_vectors
 
 
 """
@@ -348,6 +355,7 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
     tilt_angle = tilt_top_plate(top_plate_object, config)
     prints(f"Tilted top plate {tilt_angle} degrees.", 2)
     prints("Success.", 2)
+    return top_plate_object
 
 
 """
@@ -566,6 +574,95 @@ def tilt_top_plate(top_plate_object, config):
         rotation,
         centre)
     return tilt_angle
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that create the bottom plate.
+
+
+"""
+The bottom plate is essentially a projection of the top plate's
+outer rim onto the xy-plane.
+"""
+def create_bottom_plate(doc, config, top_plate, object_name):
+    prints("Creating bottom plate...", 1)
+
+    rim_vertices = get_rim_vertices_from_top_plate(top_plate, config)
+
+    # Project the rim corners onto the xy-plane. First convert them
+    # into vectors, because vertices can't be edited.
+    corners = vertices_to_vectors(rim_vertices)
+    for vector in corners:
+        vector.z = 0.0
+    #prints(f"TEST: {len(corners)} corners: {format_vectors(corners)}", 2)
+
+    bottom_plate_face = make_face_from_corners(corners)
+    extrude_vector = VECTOR_ONE_Z * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    bottom_plate_object = make_solid_from_face(doc, bottom_plate_face, extrude_vector, object_name)
+    doc.recompute()
+
+    prints("Success.", 2)
+    return bottom_plate_object
+
+
+def get_rim_vertices_from_top_plate(top_plate, config):
+    longer_than = max(
+        float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
+        float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
+    long_edges = get_long_edges(top_plate, longer_than)
+    #prints(f"TEST: found {len(long_edges)} long edges.", 3)
+
+    rim_vertices = get_rim_vertices(long_edges)
+    #prints(f"TEST: {len(rim_vertices)} rim vertices: {format_vertices(rim_vertices)}", 3)
+
+    (min_x, min_y, min_z, max_x, max_y, max_z) = get_mins_maxes_from_vertices(rim_vertices)
+    #prints(f"TEST: min_x: {min_x:.2f}; min_y: {min_y:.2f}; min_z: {min_z:.2f}", 3)
+    #prints(f"TEST: max_x: {max_x:.2f}; max_y: {max_y:.2f}; max_z: {max_z:.2f}", 3)
+
+    vertices = select_bottom_plate_vertices(rim_vertices, min_x)
+
+    # Switch the places of the last two vertices to order the rim
+    # correctly.
+    should_be_last = vertices[len(vertices) - 2]
+    vertices[len(vertices) - 2] = vertices[len(vertices) - 1]
+    vertices[len(vertices) - 1] = should_be_last
+    #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 3)
+
+    return vertices
+
+
+"""
+Gets the correct top plate outer rim vertices for creating
+the bottom plate.
+(This could also be done by projecting each vertex of a pair up and
+down along the z-axis and seeing if the resulting line intersects
+with both the top and bottom face of the top plate; the wanted
+vertex only intersects with one.)
+"""
+def select_bottom_plate_vertices(rim_vertices, min_x):
+    # The vertices are sorted (first by y, then by x) into pairs.
+    rim_vertices.sort(key=lambda v: v.X)
+    rim_vertices.sort(key=lambda v: v.Y)
+
+    # From one pair, the one with the larger x should be kept,
+    # except for the two smallest x (min_x) pairs, where the
+    # minimum x vertex should be kept.
+    vertices = []
+    i = 0
+    while i < len(rim_vertices):
+        vertex_0 = rim_vertices[i]
+        vertex_1 = rim_vertices[i + 1]
+        if isclose(vertex_0.X, min_x):
+            vertices.append(vertex_0)
+        elif isclose(vertex_1.X, min_x):
+            vertices.append(vertex_1)
+        elif vertex_0.X > vertex_1.X:
+            vertices.append(vertex_0)
+        else:
+            vertices.append(vertex_1)
+        i = i + 2
+    #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 4)
+    return vertices
 
 
 #----------------------------------------------------------------------x---------------------------
