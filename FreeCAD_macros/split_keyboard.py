@@ -344,9 +344,10 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
     top_plate_object = make_left_side_rectangular(doc, top_plate_object, config)
     prints("Made left side rectangular.", 2)
     doc.recompute()
-    #tilt_raise_top_plate()
-    prints("TODO: Tilt and raise top plate.", 2)
-    #prints("Success.", 2)
+
+    tilt_angle = tilt_top_plate(top_plate_object, config)
+    prints(f"Tilted top plate {tilt_angle} degrees.", 2)
+    prints("Success.", 2)
 
 
 """
@@ -545,6 +546,26 @@ def get_vertices_of_rectangular_extension(top_plate_object, config):
         raise Exception(f"Error: got {len(vertices)} vertices (should be seven).")
 
     return vertices
+
+
+"""
+Tilts top plate so that the right side is higher than the left.
+The angle needs to be negative to tilt it in the right direction.
+"""
+def tilt_top_plate(top_plate_object, config):
+    tilt_angle = -float(config.get("Keyboard", "TOP_PLATE_TILT_ANGLE_DEG"))
+    position = top_plate_object.Placement.Base
+    # Rotate along y-axis (pitch).
+    rotation = FreeCAD.Rotation(0.0, tilt_angle, 0.0) # Yaw, pitch, roll.
+    # Rotate through lower leftmost edge. Getting the corner of
+    # minimums works for this purpose.
+    bound_box = top_plate_object.Shape.BoundBox
+    centre = FreeCAD.Vector(bound_box.XMin, bound_box.YMin, bound_box.ZMin)
+    top_plate_object.Placement = FreeCAD.Placement(
+        position,
+        rotation,
+        centre)
+    return tilt_angle
 
 
 #----------------------------------------------------------------------x---------------------------
