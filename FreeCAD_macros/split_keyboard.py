@@ -31,6 +31,7 @@ LAYOUT_LEFT = [
               (11, 10), (12, 10), (13, 10), (14, 10), (15, 10)
 ]
 
+VECTOR_ONE_X = FreeCAD.Vector(1.0, 0.0, 0.0)
 VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 
 
@@ -49,8 +50,8 @@ def main():
 
     top_plate = create_top_plate(doc, config, switch_hole_list, "TopPlate")
     bottom_plate = create_bottom_plate(doc, config, top_plate, "BottomPlate")
+    create_side_walls(doc, config, top_plate, bottom_plate, "SideWall")
     prints("TODO: Create thumb plates.", 1)
-    prints("TODO: Create side walls.", 1)
     prints("TODO: Create wrist support.", 1)
     prints("TODO: Create enclosure that connects the halves.", 1)
     prints("TODO: Create and connect the right side.", 1)
@@ -663,6 +664,58 @@ def select_bottom_plate_vertices(rim_vertices, min_x):
         i = i + 2
     #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 4)
     return vertices
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that create the four side walls between the top and
+# bottom plates.
+
+
+def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
+    prints("Creating side walls...", 1)
+
+    longer_than = max(
+        float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
+        float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
+    bottom_plate_long_edges = get_long_edges(bottom_plate, longer_than)
+    bottom_plate_long_edges = list(filter(
+        lambda e: not isclose(e.Vertexes[0].Z, 0.0), bottom_plate_long_edges))
+    bottom_plate_rim_vertices = get_rim_vertices(bottom_plate_long_edges)
+    (min_x, min_y, min_z, max_x, max_y, max_z) = get_mins_maxes_from_vertices(
+        bottom_plate_rim_vertices)
+    #prints(f"TEST: min_x: {min_x:.2f}; min_y: {min_y:.2f}; min_z: {min_z:.2f}", 2)
+    #prints(f"TEST: max_x: {max_x:.2f}; max_y: {max_y:.2f}; max_z: {max_z:.2f}", 2)
+
+    # For creating the long side wall at min_x (left), just the two
+    # min_x vertices are needed.
+    left_wall_vertices = list(filter(
+        lambda v: isclose(v.X, min_x), bottom_plate_rim_vertices))
+    no_of_vs = len(left_wall_vertices)
+    if no_of_vs != 2:
+        raise Exception(f"Error: found {no_of_vs} min x vertices (should be two).")
+    left_wall_object = create_left_side_wall(doc, config, left_wall_vertices, f"{object_name}Left")
+    prints("Created left side wall.", 2)
+    prints("TODO: raise top plate by 8 + 3 mm.", 2)
+    prints("TODO: create top side wall.", 2)
+    prints("TODO: create bottom left side wall.", 2)
+    prints("TODO: create bottom right side wall.", 2)
+
+
+def create_left_side_wall(doc, config, vertices, object_name):
+    vertices.sort(key=lambda v: v.Y)
+    height = float(config.get("Keyboard", "LEFT_WALL_HEIGHT_MM"))
+    half_kerf = float(config.get("General", "LASER_KERF_MM"))/2.0
+    corners = []
+    corners.append(FreeCAD.Vector(vertices[0].X, vertices[0].Y, vertices[0].Z + height + half_kerf))
+    corners.append(FreeCAD.Vector(vertices[0].X, vertices[0].Y, vertices[0].Z - half_kerf))
+    corners.append(FreeCAD.Vector(vertices[1].X, vertices[1].Y, vertices[1].Z - half_kerf))
+    corners.append(FreeCAD.Vector(vertices[1].X, vertices[1].Y, vertices[1].Z + height + half_kerf))
+
+    left_wall_face = make_face_from_corners(corners)
+    extrude_vector = VECTOR_ONE_X * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    left_wall_object = make_solid_from_face(doc, left_wall_face, extrude_vector, object_name)
+    doc.recompute()
+    return left_wall_object
 
 
 #----------------------------------------------------------------------x---------------------------
