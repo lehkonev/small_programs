@@ -695,7 +695,15 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
         raise Exception(f"Error: found {no_of_vs} min x vertices (should be two).")
     left_wall_object = create_left_side_wall(doc, config, left_wall_vertices, f"{object_name}Left")
     prints("Created left side wall.", 2)
-    prints("TODO: raise top plate by 8 + 3 mm.", 2)
+
+    new_top_plate_placement_vector = top_plate.Placement.Base
+    raise_by = (float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+        + float(config.get("Keyboard", "LEFT_WALL_HEIGHT_MM")))
+    new_top_plate_placement_vector.z = new_top_plate_placement_vector.z + raise_by
+    top_plate.Placement.Base = new_top_plate_placement_vector
+    doc.recompute()
+    prints(f"Raised top plate by {raise_by:.2f} mm.", 2)
+
     prints("TODO: create top side wall.", 2)
     prints("TODO: create bottom left side wall.", 2)
     prints("TODO: create bottom right side wall.", 2)
