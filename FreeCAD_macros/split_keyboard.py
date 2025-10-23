@@ -305,11 +305,11 @@ def create_switch_holes(doc, layout, config, object_name):
         # Make an empty object with a name:
         switch_object = doc.addObject("Part::Feature", switch_name)
 
-        kerf = config.get("General", "LASER_KERF_MM")
+        #kerf = config.get("General", "LASER_KERF_MM")
         # Create a switch shape for the object:
         switch_object.Shape = Part.makeBox(
-            account_for_kerf(config.get("Keyboard", "SWITCH_LENGTH_X_MM"), kerf, hole=True),
-            account_for_kerf(config.get("Keyboard", "SWITCH_LENGTH_Y_MM"), kerf, hole=True),
+            float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
+            float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")),
             float(config.get("Keyboard", "CASE_THICKNESS_MM")))
 
         # Calculate switch's place:
@@ -705,9 +705,6 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
         left_wall_vertices, top_plate, max_y, f"{object_name}Top")
     prints("Created top side wall.", 2)
 
-    # TODO: Including the kerf messes the dimensions up a bit;
-    # maybe just ignore it now and account for it when cutting?
-
     prints("TODO: create bottom left side wall.", 2)
     prints("TODO: create bottom right side wall.", 2)
 
@@ -715,12 +712,12 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
 def create_left_side_wall(doc, config, vertices, object_name):
     vertices.sort(key=lambda v: v.Y)
     height = float(config.get("Keyboard", "LEFT_WALL_HEIGHT_MM"))
-    half_kerf = float(config.get("General", "LASER_KERF_MM"))/2.0
+    #half_kerf = float(config.get("General", "LASER_KERF_MM"))/2.0
     corners = []
-    corners.append(FreeCAD.Vector(vertices[0].X, vertices[0].Y, vertices[0].Z + height + half_kerf))
-    corners.append(FreeCAD.Vector(vertices[0].X, vertices[0].Y, vertices[0].Z - half_kerf))
-    corners.append(FreeCAD.Vector(vertices[1].X, vertices[1].Y, vertices[1].Z - half_kerf))
-    corners.append(FreeCAD.Vector(vertices[1].X, vertices[1].Y, vertices[1].Z + height + half_kerf))
+    corners.append(FreeCAD.Vector(vertices[0].X, vertices[0].Y, vertices[0].Z + height))
+    corners.append(FreeCAD.Vector(vertices[0].X, vertices[0].Y, vertices[0].Z))
+    corners.append(FreeCAD.Vector(vertices[1].X, vertices[1].Y, vertices[1].Z))
+    corners.append(FreeCAD.Vector(vertices[1].X, vertices[1].Y, vertices[1].Z + height))
 
     left_wall_face = make_face_from_corners(corners)
     extrude_vector = VECTOR_ONE_X * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
