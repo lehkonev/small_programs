@@ -340,17 +340,19 @@ def create_top_plate(doc, config, switch_hole_list, object_name):
     top_plate_face = expand_face(top_plate_face, expand_by)
     prints(f"Expanded top plate face by {expand_by:.2f} mm.", 2)
     extrude_vector = VECTOR_ONE_Z * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-    top_plate_object = make_solid_from_face(doc, top_plate_face, extrude_vector, object_name)
+    top_plate_object = make_solid_from_face(doc, top_plate_face, extrude_vector,
+        f"{object_name}Switchless")
     prints("Created top plate solid from face.", 2)
     doc.recompute()
 
-    top_plate_object = make_switch_holes(doc, top_plate_object, switch_hole_list)
+    top_plate_object = make_switch_holes(doc, top_plate_object, switch_hole_list,
+        f"{object_name}Unextended")
     prints("Made switch holes into the top plate.", 2)
     layout_angle = rotate_top_plate(top_plate_object, config)
     prints(f"Rotated top plate {layout_angle:.2f} degrees.", 2)
     doc.recompute()
 
-    top_plate_object = make_left_side_rectangular(doc, top_plate_object, config)
+    top_plate_object = make_left_side_rectangular(doc, top_plate_object, config, object_name)
     prints("Made left side rectangular.", 2)
     doc.recompute()
 
@@ -439,7 +441,7 @@ def get_top_plate_expansion(config):
     return expand_by
 
 
-def make_switch_holes(doc, base_object, switch_holes):
+def make_switch_holes(doc, base_object, switch_holes, object_name):
     # Group/fuse the switch holes.
     switches_name = "LeftSwitchHoles"
     left_switches = doc.addObject("Part::MultiFuse", switches_name)
@@ -449,7 +451,7 @@ def make_switch_holes(doc, base_object, switch_holes):
 
     # Create a top plate with switch holes by using the old top
     # plate as a base and the switch holes as a tool for makeCutOut.
-    new_top_plate = BOPTools.JoinFeatures.makeCutout(name=base_object.Name)
+    new_top_plate = BOPTools.JoinFeatures.makeCutout(name=object_name)
     new_top_plate.Base = base_object
     new_top_plate.Tool = left_switches
     new_top_plate.Proxy.execute(new_top_plate)
@@ -485,11 +487,11 @@ Makes the left side of the top plate rectangular by creating filler
 solids. Or, stretches the corners with smallest x coordinates to the
 minimum x coordinate.
 """
-def make_left_side_rectangular(doc, top_plate_object, config):
+def make_left_side_rectangular(doc, top_plate_object, config, object_name):
     vertices = get_vertices_of_rectangular_extension(top_plate_object, config)
     left_rectangle_face = make_face_from_corners(vertices_to_vectors(vertices))
     extrude_vector = VECTOR_ONE_Z * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-    left_rectangle_name = f"{top_plate_object.Name}_extension"
+    left_rectangle_name = f"{object_name}Extension"
     left_rectangle_object = make_solid_from_face(
         doc, left_rectangle_face, extrude_vector, left_rectangle_name)
     doc.recompute()
@@ -497,7 +499,7 @@ def make_left_side_rectangular(doc, top_plate_object, config):
     # but when fused below, the problem disappears.
 
     # Combine the left side with the existing top plate.
-    new_top_plate_object = BOPTools.JoinFeatures.makeConnect(name=top_plate_object.Name)
+    new_top_plate_object = BOPTools.JoinFeatures.makeConnect(name=object_name)
     new_top_plate_object.Objects = [top_plate_object, left_rectangle_object]
     new_top_plate_object.Proxy.execute(new_top_plate_object)
     new_top_plate_object.purgeTouched()
@@ -689,7 +691,7 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
     no_of_vs = len(left_wall_vertices)
     if no_of_vs != 2:
         raise Exception(f"Error: found {no_of_vs} min x vertices (should be two).")
-    left_wall_object = create_left_side_wall(doc, config, left_wall_vertices, f"{object_name}Left")
+    left_wall_object = create_left_side_wall(doc, config, left_wall_vertices, f"Left{object_name}")
     left_wall_vertices = left_wall_object.Shape.Vertexes
     prints("Created left side wall.", 2)
 
@@ -702,7 +704,7 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
     prints(f"Raised top plate by {raise_by:.2f} mm.", 2)
 
     top_wall_object = create_top_side_wall(doc, config, bottom_plate_vertices,
-        left_wall_vertices, top_plate, max_y, f"{object_name}Top")
+        left_wall_vertices, top_plate, max_y, f"Top{object_name}")
     prints("Created top side wall.", 2)
 
     prints("TODO: create bottom left side wall.", 2)
