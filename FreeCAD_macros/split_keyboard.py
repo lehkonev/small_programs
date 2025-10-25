@@ -14,6 +14,7 @@ import os.path
 
 SCRIPT_FILE = __file__
 CONFIG_FILE_NAME = "split_keyboard.ini"
+FREECAD_EXT = ".FCStd" # Expected name format: "SplitKeyboard001.FCStd".
 
 # Visual and positional layout of the left side of the split keyboard.
 # Each coordinate denotes one switch's place (in unit lengths, not in
@@ -35,39 +36,92 @@ VECTOR_ONE_X = FreeCAD.Vector(1.0, 0.0, 0.0)
 VECTOR_ONE_Y = FreeCAD.Vector(0.0, 1.0, 0.0)
 VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 
+# If START_AT_STEP is 0, create a new document. If it is not, try to
+# find a file with a number one less than it from the macro directory.
+# If not found, start at step 0.
+START_AT_STEP = 3
+# If STOP_AT_STEP is equal to or greater than the existing maximum step,
+# all steps are performed. If it is below, only steps up to that
+# step are performed.
+STOP_AT_STEP = 44
+STEPS = {
+    0: "Creating document...",
+    1: "Creating switch holes...",
+    2: "Creating top plate...",
+    3: "Creating bottom plate...",
+    4: "Creating side walls...",
+    5: "Creating thumb plates...",
+    6: "Creating wrist support...",
+    7: "Creating enclosure that connects the halves...",
+    8: "Creating and connecting right side...",
+}
 
 def main():
     prints(f"Hello. Executing file: '{SCRIPT_FILE}'")
 
-    config = read_configuration(SCRIPT_FILE, CONFIG_FILE_NAME)
-    doc = create_document(config.get("General", "DOCUMENT_NAME"))
+    # Read files from the macro directory.
+    directory = os.path.dirname(SCRIPT_FILE)
+    directory = os.path.abspath(directory) # Fix / vs. \.
 
-    switch_hole_list = create_switch_holes(doc, LAYOUT_LEFT, config, "SwitchHole")
+    config = read_configuration_file(directory, CONFIG_FILE_NAME)
+    base_document_name = config.get("General", "DOCUMENT_NAME")
 
-    # Now that there are objects, adjust the view:
-    Gui.activeDocument().activeView().viewIsometric()
-    Gui.ActiveDocument.ActiveView.setAxisCross(True)
-    Gui.SendMsgToActiveView("ViewFit")
+    document_number = START_AT_STEP - 1
+    (doc, start_at_step) = open_document(directory, base_document_name, document_number)
 
-    top_plate = create_top_plate(doc, config, switch_hole_list, "TopPlate")
-    bottom_plate = create_bottom_plate(doc, config, top_plate, "BottomPlate")
-    create_side_walls(doc, config, top_plate, bottom_plate, "SideWall")
-    prints("TODO: Create thumb plates.", 1)
-    prints("TODO: Create wrist support.", 1)
-    prints("TODO: Create enclosure that connects the halves.", 1)
-    prints("TODO: Create and connect the right side.", 1)
+    if STOP_AT_STEP < start_at_step:
+        prints(f"Warning: Stopping step ({STOP_AT_STEP}) is less than"
+            + f" starting step ({start_at_step}). Nothing is done.")
+    stop_before_step = min(STOP_AT_STEP + 1, len(STEPS))
+
+    (objects, switch_hole_list) = get_objects(doc)
+
+    step = start_at_step
+    stop_step = step - 1
+    while step < stop_before_step:
+        prints(f"Step {step}: {STEPS[step]}", 1)
+
+        match step:
+            case 0:
+                doc = create_document(base_document_name)
+            case 1:
+                switch_hole_list = create_switch_holes(doc, LAYOUT_LEFT, config, "SwitchHole")
+                # Now that there are objects, adjust the view:
+                Gui.activeDocument().activeView().viewIsometric()
+                Gui.ActiveDocument.ActiveView.setAxisCross(True)
+                Gui.SendMsgToActiveView("ViewFit")
+            case 2:
+                top_plate = create_top_plate(doc, config, switch_hole_list, "TopPlate")
+                objects["TopPlate"] = top_plate
+            case 3:
+                bottom_plate = create_bottom_plate(doc, config, objects["TopPlate"],
+                    "BottomPlate")
+                objects["BottomPlate"] = bottom_plate
+            case 4:
+                create_side_walls(doc, config, objects["TopPlate"], objects["BottomPlate"],
+                    "SideWall")
+            case bigger if bigger < len(STEPS):
+                prints("TODO", 2)
+                stop_step = stop_step - 1
+            case _:
+                break
+
+        step = step + 1
+        stop_step = stop_step + 1
+
+    if doc is not None:
+        # Rename the document according to actual last step performed.
+        doc.Label = f"{base_document_name}{'%03d'%stop_step}"
 
     prints("Exiting.")
 
 
-"""
-Reads a configuration file.
-Uses the directory the script_file is in and the file name in config_file_name.
-"""
-def read_configuration(script_file, config_file_name):
+#----------------------------------------------------------------------x---------------------------
+# File and document utility functions.
+
+
+def read_configuration_file(directory, config_file_name):
     prints("Reading configuration file...", 1)
-    directory = os.path.dirname(script_file)
-    directory = os.path.abspath(directory) # Fix / vs. \.
     config_file = os.path.join(directory, config_file_name)
     #prints(f"TEST: config file: '{config_file}'", 2)
 
@@ -77,11 +131,58 @@ def read_configuration(script_file, config_file_name):
     return config
 
 
+def open_document(directory, base_document_name, number):
+    if number <= 0:
+        return (None, 0)
+
+    document_name = f"{base_document_name}{'%03d'%number}"
+    file_name = f"{document_name}{FREECAD_EXT}"
+    full_file_name = f"{directory}/{file_name}"
+    prints(f"Trying to open document '{document_name}'...", 1)
+    close_document(document_name)
+
+    try:
+        #prints(f"TEST: Opening: '{full_file_name}'...", 2)
+        FreeCAD.openDocument(full_file_name)
+        App.setActiveDocument(document_name)
+        App.ActiveDocument=App.getDocument(document_name)
+        Gui.ActiveDocument=Gui.getDocument(document_name)
+        prints(f"Success: opened '{file_name}'.", 2)
+        return (App.ActiveDocument, number + 1)
+    except:
+        prints(f"Warning: Could not find '{file_name}' or something went wrong."
+            + " Starting at step 0.", 2)
+
+    return (None, 0)
+
+
+def close_document(document_name):
+    try:
+        App.setActiveDocument(document_name)
+    except:
+        # There is no document with that name; nothing needs to be done.
+        return
+
+    prints(f"Closing existing '{document_name}' document.", 2)
+    App.closeDocument(document_name)
+
+
+def get_objects(doc):
+    objects = {}
+    switch_hole_list = []
+    if doc is not None:
+        for obj in doc.Objects:
+            if obj.ViewObject.isVisible():
+                if obj.Name.startswith("SwitchHole"):
+                    switch_hole_list.append(obj)
+                else:
+                    objects[obj.Name] = obj
+    return (objects, switch_hole_list)
+
+
 def create_document(document_name):
-    prints("Creating document in FreeCAD...", 1)
-    if App.activeDocument() and (App.activeDocument().Label == document_name):
-        prints("Closing existing document of same name.", 2)
-        App.closeDocument(document_name)
+    prints("Creating new document in FreeCAD...", 1)
+    close_document(document_name)
 
     new_document = FreeCAD.newDocument(document_name)
     prints(f"Success: created document '{document_name}'.", 2)
