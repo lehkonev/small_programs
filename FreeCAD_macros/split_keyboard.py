@@ -39,11 +39,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 3
+START_AT_STEP = 4
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 44
+STOP_AT_STEP = 9
 STEPS = {
     0: "Creating document...",
     1: "Creating switch holes...",
@@ -109,9 +109,10 @@ def main():
         step = step + 1
         stop_step = stop_step + 1
 
-    if doc is not None:
-        # Rename the document according to actual last step performed.
-        doc.Label = f"{base_document_name}{'%03d'%stop_step}"
+    new_doc_name = f"{base_document_name}{'%03d'%stop_step}"
+    if (doc is not None) and (doc.Label != new_doc_name):
+        prints(f"Rename the document to '{new_doc_name}' (last actual step: {stop_step}).")
+        doc.Label = f"{new_doc_name}"
 
     prints("Exiting.")
 
@@ -804,11 +805,14 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
     doc.recompute()
     prints(f"Raised top plate by {raise_by:.2f} mm.", 2)
 
-    top_wall_object = create_top_side_wall(doc, config, bottom_plate_vertices,
+    top_wall_object = create_side_wall(doc, config, bottom_plate_vertices,
         left_wall_vertices, top_plate, max_y, f"Top{object_name}")
     prints("Created top side wall.", 2)
 
-    prints("TODO: create bottom left side wall.", 2)
+    bottom_left_wall_object = create_side_wall(doc, config, bottom_plate_vertices,
+        left_wall_vertices, top_plate, min_y, f"BottomLeft{object_name}")
+    prints("Created bottom left side wall.", 2)
+
     prints("TODO: create bottom right side wall.", 2)
 
 
@@ -830,53 +834,62 @@ def create_left_side_wall(doc, config, vertices, object_name):
 
 
 """
-Creates a side wall at maximum y between the bottom plate, left side
+Creates a side wall at minimum/maximum y between the bottom plate, left side
 wall and top plate.
 Needed:
-  1) From bottom plate: a max_y vertex (the one with bigger x).
-  2) From left wall: two top right (max y, bigger x) vertices.
-  3) From top plate: two vertices with max y from the lower z edge.
+  1) From bottom plate: a min/max y vertex (the one with bigger x).
+  2) From left wall: two top right (min/max y, bigger x) vertices.
+  3) From top plate: two vertices with min/max y from the lower z edge.
 """
-def create_top_side_wall(doc, config, bottom_plate_vertices, left_wall_vertices, top_plate,
-        max_y, object_name):
-    top_wall_vertices_1 = list(filter(
-        lambda v: isclose(v.Y, max_y), bottom_plate_vertices))
-    no_of_vs = len(top_wall_vertices_1)
+def create_side_wall(doc, config, bottom_plate_vertices, left_wall_vertices, top_plate,
+        the_y, object_name):
+    wall_vertices_1 = list(filter(
+        lambda v: isclose(v.Y, the_y), bottom_plate_vertices))
+    no_of_vs = len(wall_vertices_1)
     if no_of_vs != 2:
-        raise Exception(f"Error: found {no_of_vs} max y vertices (should be two).")
-    top_wall_vertices_1.sort(key=lambda v: v.X)
-    top_wall_vertices_1 = top_wall_vertices_1[1:]
-    #prints(f"TEST: top_wall_vertices_1: {format_vertices(top_wall_vertices_1)}", 2)
+        raise Exception(f"Error: found {no_of_vs} y vertices (should be two).")
+    wall_vertices_1.sort(key=lambda v: v.X)
+    wall_vertices_1 = wall_vertices_1[1:]
+    #prints(f"TEST: wall_vertices_1: {format_vertices(wall_vertices_1)}", 3)
 
-    top_wall_vertices_2 = sorted(left_wall_vertices, key=lambda v: v.Y)[-4:]
-    #prints(f"TEST: top_wall_vertices_2, 1: {format_vertices(top_wall_vertices_2)}", 2)
-    top_wall_vertices_2 = sorted(top_wall_vertices_2, key=lambda v: v.X)[-2:]
-    #prints(f"TEST: top_wall_vertices_2, 2: {format_vertices(top_wall_vertices_2)}", 2)
-    top_wall_vertices_2.sort(key=lambda v: v.Z)
+    direction = 1
+    start = 0
+    end = 4
+    if the_y > top_plate.Shape.CenterOfGravity.y:
+        direction = -1
+        start = len(left_wall_vertices) - 4
+        end = len(left_wall_vertices)
+
+    wall_vertices_2 = sorted(left_wall_vertices, key=lambda v: v.Y)[start:end]
+    #prints(f"TEST: wall_vertices_2, 1: {format_vertices(wall_vertices_2)}", 3)
+    wall_vertices_2 = sorted(wall_vertices_2, key=lambda v: v.X)[-2:]
+    #prints(f"TEST: wall_vertices_2, 2: {format_vertices(wall_vertices_2)}", 3)
+    wall_vertices_2.sort(key=lambda v: v.Z)
 
     longer_than = max(
         float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
         float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
     top_plate_long_edges = get_long_edges(top_plate, longer_than)
-    #prints(f"TEST: found {len(top_plate_long_edges)} long edges in top plate.", 2)
+    #prints(f"TEST: found {len(top_plate_long_edges)} long edges in top plate.", 3)
     top_plate_rim_vertices = get_rim_vertices(top_plate_long_edges)
-    #prints(f"TEST: top_plate_rim_vertices: {format_vertices(top_plate_rim_vertices)}", 2)
-    top_wall_vertices_3 = list(filter(
-        lambda v: isclose(v.Y, max_y), top_plate_rim_vertices))
-    no_of_vs = len(top_wall_vertices_3)
+    #prints(f"TEST: top_plate_rim_vertices: {format_vertices(top_plate_rim_vertices)}", 3)
+    wall_vertices_3 = list(filter(
+        lambda v: isclose(v.Y, the_y), top_plate_rim_vertices))
+    no_of_vs = len(wall_vertices_3)
     if no_of_vs != 4:
         raise Exception(f"Error: found {no_of_vs} max y vertices (should be four).")
-    top_wall_vertices_3.sort(key=lambda v: v.Z)
+    wall_vertices_3.sort(key=lambda v: v.Z)
     # There are four vertices, sorted by z -> get first and third.
-    top_wall_vertices_3 = [top_wall_vertices_3[0], top_wall_vertices_3[2]]
+    wall_vertices_3 = [wall_vertices_3[0], wall_vertices_3[2]]
 
-    top_wall_vertices = top_wall_vertices_1 + top_wall_vertices_2 + top_wall_vertices_3
-    top_wall_face = make_face_from_corners(vertices_to_vectors(top_wall_vertices))
-    extrude_vector = -VECTOR_ONE_Y * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-    top_wall_object = make_solid_from_face(doc, top_wall_face, extrude_vector, object_name)
+    wall_vertices = wall_vertices_1 + wall_vertices_2 + wall_vertices_3
+    #prints(f"TEST: wall_vertices: {format_vertices(wall_vertices)}", 3)
+    wall_face = make_face_from_corners(vertices_to_vectors(wall_vertices))
+    extrude_vector = direction*VECTOR_ONE_Y * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    wall_object = make_solid_from_face(doc, wall_face, extrude_vector, object_name)
     doc.recompute()
 
-    return top_wall_object
+    return wall_object
 
 
 #----------------------------------------------------------------------x---------------------------
