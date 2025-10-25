@@ -290,6 +290,16 @@ def expand_face(face, expand_by):
     return offset_face
 
 
+def get_long_edge_vertices(config, object):
+    longer_than = max(
+        float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
+        float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
+    long_edges = get_long_edges(object, longer_than)
+    #prints(f"TEST: found {len(long_edges)}.", 4)
+    long_edge_vertices = get_rim_vertices(long_edges)
+    return long_edge_vertices
+
+
 def get_long_edges(object, longer_than):
     if (longer_than < 0) or isclose(longer_than, 0.0):
         raise Exception("Error: edge length comparison value has to be greater than 0.")
@@ -813,9 +823,15 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
         left_wall_vertices, top_plate, min_y, f"BottomLeft{object_name}")
     prints("Created bottom left side wall.", 2)
 
-    prints("TODO: create bottom right side wall.", 2)
+    bottom_right_wall_object = create_bottom_right_side_wall(doc, config, top_plate,
+        bottom_left_wall_object, f"BottomRight{object_name}")
+    prints("TODO: created bottom right side wall.", 2)
 
 
+"""
+Creates a rectangular side wall at minimum x, between the top and
+bottom plates. The top plate's smallest z edge will rest on this wall.
+"""
 def create_left_side_wall(doc, config, vertices, object_name):
     vertices.sort(key=lambda v: v.Y)
     height = float(config.get("Keyboard", "LEFT_WALL_HEIGHT_MM"))
@@ -866,12 +882,7 @@ def create_side_wall(doc, config, bottom_plate_vertices, left_wall_vertices, top
     #prints(f"TEST: wall_vertices_2, 2: {format_vertices(wall_vertices_2)}", 3)
     wall_vertices_2.sort(key=lambda v: v.Z)
 
-    longer_than = max(
-        float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
-        float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
-    top_plate_long_edges = get_long_edges(top_plate, longer_than)
-    #prints(f"TEST: found {len(top_plate_long_edges)} long edges in top plate.", 3)
-    top_plate_rim_vertices = get_rim_vertices(top_plate_long_edges)
+    top_plate_rim_vertices = get_long_edge_vertices(config, top_plate)
     #prints(f"TEST: top_plate_rim_vertices: {format_vertices(top_plate_rim_vertices)}", 3)
     wall_vertices_3 = list(filter(
         lambda v: isclose(v.Y, the_y), top_plate_rim_vertices))
@@ -890,6 +901,42 @@ def create_side_wall(doc, config, bottom_plate_vertices, left_wall_vertices, top
     doc.recompute()
 
     return wall_object
+
+
+def create_bottom_right_side_wall(doc, config, top_plate, bottom_left_wall, object_name):
+    # From the top plate, first take the six vertices with smallest y.
+    top_plate_rim_vertices = get_long_edge_vertices(config, top_plate)
+    wall_vertices_1 = (sorted(top_plate_rim_vertices, key=lambda v: v.Y))[:6]
+    # Then take two with largest x.
+    wall_vertices_1 = (sorted(wall_vertices_1, key=lambda v: v.X))[-2:]
+    # Finally, take the one with smaller z.
+    wall_vertices_1 = (sorted(wall_vertices_1, key=lambda v: v.Z))[:1]
+    # Append the lower z vertex.
+    wall_vertices_1.append(Part.Vertex(wall_vertices_1[0].X, wall_vertices_1[0].Y, 3.0))
+
+    # From bottom_left_wall_vertices, take two vertices with largest x and smallest y.
+    wall_vertices_2 = (sorted(bottom_left_wall.Shape.Vertexes, key=lambda v: v.X))[-4:]
+    wall_vertices_2 = (sorted(wall_vertices_2, key=lambda v: v.Y))[:2]
+    wall_vertices_2.sort(key=lambda v: v.Z)
+
+    wall_vertices = wall_vertices_1 + wall_vertices_2
+    prints(f"TEST: wall_vertices: {format_vertices(wall_vertices)}", 3)
+
+    bottom_right_wall_face = make_face_from_corners(vertices_to_vectors(wall_vertices))
+    # The extrude direction is either the face's normal or its negation.
+    direction = bottom_right_wall_face.normalAt(0, 0)
+    if direction.x > 0:
+        direction = -direction
+    extrude_vector = direction * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    bottom_right_wall_object = make_solid_from_face(doc, bottom_right_wall_face, extrude_vector,
+        f"{object_name}Untrimmed")
+    doc.recompute()
+
+    # The bottom right side wall's larger z and smaller x sides cut
+    # into the top plate and bottom left side wall respectively,
+    # so it needs to be trimmed.
+
+    return bottom_right_wall_object
 
 
 #----------------------------------------------------------------------x---------------------------
