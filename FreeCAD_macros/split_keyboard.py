@@ -31,6 +31,11 @@ LAYOUT_LEFT = [
                                                                 (16, 10.5),
               (11, 10), (12, 10), (13, 10), (14, 10), (15, 10)
 ]
+LAYOUT_LEFT_THUMB = [
+    (10, 12),  (11, 12),
+    (10, 11),  (11, 11),
+    (10, 10),  (11, 10),
+]
 
 VECTOR_ONE_X = FreeCAD.Vector(1.0, 0.0, 0.0)
 VECTOR_ONE_Y = FreeCAD.Vector(0.0, 1.0, 0.0)
@@ -39,11 +44,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 4
+START_AT_STEP = 5
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 4
+STOP_AT_STEP = 9
 STEPS = {
     0: "Creating document...",
     1: "Creating switch holes...",
@@ -103,6 +108,9 @@ def main():
                 objects["TopSideWall"] = top_wall
                 objects["BottomLeftSideWall"] = bottom_left_wall
                 objects["BottomRightSideWall"] = bottom_right_wall
+            case 5:
+                create_thumb_plates(doc, config, objects["TopPlate"], objects["BottomPlate"],
+                    "ThumbPlate")
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -178,9 +186,7 @@ def get_objects(doc):
 
 
 def create_document(document_name):
-    prints("Creating new document in FreeCAD...", 1)
     close_document(document_name)
-
     new_document = FreeCAD.newDocument(document_name)
     prints(f"Success: created document '{document_name}'.", 2)
     return new_document
@@ -404,7 +410,6 @@ def make_solid_from_face(doc, face, extrude_vector, object_name):
 
 
 def create_switch_holes(doc, layout, config, object_name):
-    prints("Creating switch holes...", 1)
     switch_hole_list = []
     i = 0
 
@@ -438,8 +443,6 @@ def create_switch_holes(doc, layout, config, object_name):
 
 
 def create_top_plate(doc, config, switch_hole_list, object_name):
-    prints("Creating top plate...", 1)
-
     corners = find_corners(switch_hole_list)
     prints(f"Found {len(corners)} corners.", 2)
     top_plate_face = make_face_from_corners(corners)
@@ -551,7 +554,7 @@ def get_top_plate_expansion(config):
 
 def make_switch_holes(doc, base_object, switch_holes, object_name):
     # Group/fuse the switch holes.
-    switches_name = "LeftSwitchHoles"
+    switches_name = f"{object_name}SwitchHoles"
     left_switches = doc.addObject("Part::MultiFuse", switches_name)
     left_switches.Shapes = switch_holes
 
@@ -697,8 +700,6 @@ The bottom plate is essentially a projection of the top plate's
 outer rim onto the xy-plane.
 """
 def create_bottom_plate(doc, config, top_plate, object_name):
-    prints("Creating bottom plate...", 1)
-
     rim_vertices = get_rim_vertices_from_top_plate(top_plate, config)
 
     # Project the rim corners onto the xy-plane. First convert them
@@ -783,8 +784,6 @@ def select_bottom_plate_vertices(rim_vertices, min_x):
 
 
 def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
-    prints("Creating side walls...", 1)
-
     bottom_plate_vertices = list(filter(
         lambda v: not isclose(v.Z, 0.0), bottom_plate.Shape.Vertexes))
     (min_x, min_y, min_z, max_x, max_y, max_z) = get_mins_maxes_from_vertices(
@@ -1020,6 +1019,53 @@ def make_bottom_right_side_wall_cut_shape(doc, shape, thickness, object_name):
     #cut_TEST = make_solid_from_face(doc, cut_face, extrude_vector, f"{object_name}CutShapeTEST")
 
     return cut_shape
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that create the top and bottom plates for thumb keys.
+
+
+def create_thumb_plates(doc, config, top_plate, bottom_plate, object_name):
+    thumb_switch_holes = create_switch_holes(doc, LAYOUT_LEFT_THUMB, config,
+        f"{object_name}SwitchHole")
+    switches_name = "LeftThumbSwitchHoles"
+    thumb_switches = doc.addObject("Part::MultiFuse", switches_name)
+    thumb_switches.Shapes = thumb_switch_holes
+    doc.recompute()
+
+    thumb_plate_switchless = create_top_thumb_plate(doc, config, thumb_switches.Shape.BoundBox,
+        f"{object_name}Switchless")
+    prints(f"Created thumb plate solid from the corners.", 2)
+
+    top_thumb_plate = make_switch_holes(doc, thumb_plate_switchless, thumb_switches,
+        f"{object_name}Base")
+    prints(f"Made switch holes into the thumb plate.", 2)
+
+    prints("TODO: find thumb edges on top and bottom plate.", 2)
+    prints("TODO: align top thumb plate with the thumb edge and tilt.", 2)
+    prints("TODO: expand top thumb edge to cover a trapezoidal area.", 2)
+    prints("TODO: make bottom thumb plate.", 2)
+    prints("TODO: find thumb edges on top and bottom plate.", 2)
+
+
+def create_top_thumb_plate(doc, config, bound_box, object_name):
+    enlarge_by = (2*float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+        + float(config.get("Keyboard", "PLATE_EXTRA_MM")))
+    min_x = bound_box.XMin - enlarge_by
+    max_x = bound_box.XMax + enlarge_by
+    min_y = bound_box.YMin - enlarge_by
+    max_y = bound_box.YMax + enlarge_by
+    corners = []
+    corners.append(FreeCAD.Vector(min_x, min_y, 0.0))
+    corners.append(FreeCAD.Vector(max_x, min_y, 0.0))
+    corners.append(FreeCAD.Vector(max_x, max_y, 0.0))
+    corners.append(FreeCAD.Vector(min_x, max_y, 0.0))
+    thumb_face = make_face_from_corners(corners)
+    #thumb_face_TEST = doc.addObject("Part::Feature", f"{object_name}FaceTEST")
+    #thumb_face_TEST.Shape = thumb_face
+    extrude_vector = float(config.get("Keyboard", "CASE_THICKNESS_MM")) * VECTOR_ONE_Z
+    thumb_plate_switchless = make_solid_from_face(doc, thumb_face, extrude_vector, object_name)
+    return thumb_plate_switchless
 
 
 #----------------------------------------------------------------------x---------------------------
