@@ -43,7 +43,7 @@ START_AT_STEP = 4
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 9
+STOP_AT_STEP = 4
 STEPS = {
     0: "Creating document...",
     1: "Creating switch holes...",
@@ -77,7 +77,6 @@ def main():
     (objects, switch_hole_list) = get_objects(doc)
 
     step = start_at_step
-    stop_step = step - 1
     while step < stop_before_step:
         prints(f"Step {step}: {STEPS[step]}", 1)
 
@@ -98,21 +97,18 @@ def main():
                     "BottomPlate")
                 objects["BottomPlate"] = bottom_plate
             case 4:
-                create_side_walls(doc, config, objects["TopPlate"], objects["BottomPlate"],
-                    "SideWall")
+                (left_wall, top_wall, bottom_left_wall, bottom_right_wall) = create_side_walls(
+                    doc, config, objects["TopPlate"], objects["BottomPlate"], "SideWall")
+                objects["LeftSideWall"] = left_wall
+                objects["TopSideWall"] = top_wall
+                objects["BottomLeftSideWall"] = bottom_left_wall
+                objects["BottomRightSideWall"] = bottom_right_wall
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
-                stop_step = stop_step - 1
             case _:
                 break
 
         step = step + 1
-        stop_step = stop_step + 1
-
-    new_doc_name = f"{base_document_name}{'%03d'%stop_step}"
-    if (doc is not None) and (doc.Label != new_doc_name):
-        prints(f"Rename the document to '{new_doc_name}' (last actual step: {stop_step}).")
-        doc.Label = f"{new_doc_name}"
 
     prints("Exiting.")
 
@@ -825,7 +821,10 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
 
     bottom_right_wall_object = create_bottom_right_side_wall(doc, config, top_plate,
         bottom_left_wall_object, f"BottomRight{object_name}")
-    prints("TODO: created bottom right side wall.", 2)
+    prints("Created bottom right side wall.", 2)
+
+    prints("Success.", 2)
+    return (left_wall_object, top_wall_object, bottom_left_wall_object, bottom_right_wall_object)
 
 
 """
@@ -920,7 +919,7 @@ def create_bottom_right_side_wall(doc, config, top_plate, bottom_left_wall, obje
     wall_vertices_2.sort(key=lambda v: v.Z)
 
     wall_vertices = wall_vertices_1 + wall_vertices_2
-    prints(f"TEST: wall_vertices: {format_vertices(wall_vertices)}", 3)
+    #prints(f"TEST: wall_vertices: {format_vertices(wall_vertices)}", 3)
 
     bottom_right_wall_face = make_face_from_corners(vertices_to_vectors(wall_vertices))
     # The extrude direction is either the face's normal or its negation.
@@ -928,15 +927,99 @@ def create_bottom_right_side_wall(doc, config, top_plate, bottom_left_wall, obje
     if direction.x > 0:
         direction = -direction
     extrude_vector = direction * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-    bottom_right_wall_object = make_solid_from_face(doc, bottom_right_wall_face, extrude_vector,
-        f"{object_name}Untrimmed")
+    bottom_right_wall_object = make_solid_from_face(doc, bottom_right_wall_face,
+        extrude_vector, f"{object_name}Untrimmed")
     doc.recompute()
 
     # The bottom right side wall's larger z and smaller x sides cut
     # into the top plate and bottom left side wall respectively,
     # so it needs to be trimmed.
+    bottom_right_wall_object = trim_bottom_right_side_wall(doc, config,
+        bottom_right_wall_object, top_plate, bottom_left_wall, object_name)
 
     return bottom_right_wall_object
+
+
+def trim_bottom_right_side_wall(doc, config, bottom_right_wall, top_plate, bottom_left_wall,
+        object_name):
+    remove_name = bottom_right_wall.Name
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+
+    # First, make crude trims.
+    # This leaves the larger z side face slightly slanted:
+    bottom_right_wall_new_shape = bottom_right_wall.Shape.cut(top_plate.Shape)
+    # This leaves a corner in the smaller x side face:
+    bottom_right_wall_new_shape = bottom_right_wall_new_shape.cut(bottom_left_wall.Shape)
+    #half_trimmed_TEST = doc.addObject("Part::Feature", f"{object_name}HalfTrimmedTEST")
+    #half_trimmed_TEST.Shape = bottom_right_wall_new_shape
+
+    # Make a box that can be used to fully trim the smaller x side.
+    cut_shape = make_bottom_right_side_wall_cut_shape(doc, bottom_right_wall_new_shape,
+        thickness, object_name)
+    bottom_right_wall_new_shape = bottom_right_wall_new_shape.cut(cut_shape)
+    #trimmed_TEST = doc.addObject("Part::Feature", f"{object_name}TrimmedTEST")
+    #trimmed_TEST.Shape = bottom_right_wall_new_shape
+
+    # Then take the second to largest face and extrude that into the negative of its normal.
+    face = sorted(bottom_right_wall_new_shape.Faces, key=lambda f: f.Area, reverse=True)[1]
+    direction = -(face.normalAt(0, 0))
+    extrude_vector = direction * float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    bottom_right_wall_object = make_solid_from_face(doc, face, extrude_vector, object_name)
+
+    # Finally, delete the original bottom right wall.
+    doc.removeObject(remove_name)
+    doc.recompute()
+
+    return bottom_right_wall_object
+
+
+def make_bottom_right_side_wall_cut_shape(doc, shape, thickness, object_name):
+    # The two shortest edges have the vertices that can be used to
+    # create the cutoff shape.
+    edges = sorted(shape.Edges, key=lambda e: e.Length)
+    #for edge_TEST in edges:
+        #prints(f"TEST: edge length: {edge_TEST.Length:.2f}", 3)
+    short_edges = edges[:2]
+
+    # The correct vertices are the ones with larger x.
+    vectors = []
+    for edge in short_edges:
+        vertex = edge.Vertexes[0]
+        if edge.Vertexes[1].X > vertex.X:
+            vertex = edge.Vertexes[1]
+        vector = vertex_to_vector(vertex)
+
+        # The larger z needs to be made a little larger (exact size
+        # is not necessary).
+        if not isclose(vector.z, thickness):
+            vector.z = vector.z + thickness
+        vectors.append(vector)
+    #prints(f"TEST: short edge vectors: {format_vectors(vectors)}", 3)
+    if len(vectors) != 2:
+        raise Exception(f"Error: got {len(vectors)} short edge vectors (should be two).")
+
+    # Use the normal of the largest face to calculate corners for the
+    # face that can be used to make a trimming shape.
+    faces = sorted(shape.Faces, key=lambda f: f.Area, reverse=True)
+    direction = faces[0].normalAt(0, 0) * thickness
+    corners = []
+    for vector in vectors:
+        corners.append(vector + direction)
+        corners.append(vector - direction)
+        direction = -direction
+    #prints(f"TEST: cut-block vectors: {format_vectors(corners)}", 3)
+
+    cut_face = make_face_from_corners(corners)
+    #face_TEST = doc.addObject("Part::Feature", f"{object_name}FaceTEST")
+    #face_TEST.Shape = cut_face
+    direction = cut_face.normalAt(0, 0)
+    if direction.x > 0:
+        direction = -direction
+    extrude_vector = direction * thickness
+    cut_shape = cut_face.extrude(extrude_vector)
+    #cut_TEST = make_solid_from_face(doc, cut_face, extrude_vector, f"{object_name}CutShapeTEST")
+
+    return cut_shape
 
 
 #----------------------------------------------------------------------x---------------------------
