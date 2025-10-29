@@ -32,11 +32,11 @@ LAYOUT_LEFT = [
               (11, 10), (12, 10), (13, 10), (14, 10), (15, 10)
 ]
 LAYOUT_LEFT_THUMB = [
-    (10, 12),  (11, 12),
-    (10, 11),  (11, 11),
-    (10, 10),  (11, 10),
+    (0, 1),  (1, 1),  (2, 1),
+    (0, 0),  (1, 0),  (2, 0),
 ]
 
+VECTOR_ZERO = FreeCAD.Vector(0.0, 0.0, 0.0)
 VECTOR_ONE_X = FreeCAD.Vector(1.0, 0.0, 0.0)
 VECTOR_ONE_Y = FreeCAD.Vector(0.0, 1.0, 0.0)
 VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
@@ -48,17 +48,18 @@ START_AT_STEP = 5
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 9
+STOP_AT_STEP = 5
 STEPS = {
     0: "Creating document...",
     1: "Creating switch holes...",
     2: "Creating top plate...",
     3: "Creating bottom plate...",
     4: "Creating side walls...",
-    5: "Creating thumb plates...",
-    6: "Creating wrist support...",
-    7: "Creating enclosure that connects the halves...",
-    8: "Creating and connecting right side...",
+    5: "Creating top thumb plate...",
+    6: "Creating bottom thumb plate...",
+    7: "Creating wrist support...",
+    8: "Creating enclosure that connects the halves...",
+    9: "Creating and connecting right side...",
 }
 
 def main():
@@ -90,6 +91,9 @@ def main():
                 doc = create_document(base_document_name)
             case 1:
                 switch_hole_list = create_switch_holes(doc, LAYOUT_LEFT, config, "SwitchHole")
+                # TODO:
+                #faces = create_switch_hole_faces(config, LAYOUT_LEFT, None, VECTOR_ONE_X, VECTOR_ONE_Y)
+
                 # Now that there are objects, adjust the view:
                 Gui.activeDocument().activeView().viewIsometric()
                 Gui.ActiveDocument.ActiveView.setAxisCross(True)
@@ -109,8 +113,9 @@ def main():
                 objects["BottomLeftSideWall"] = bottom_left_wall
                 objects["BottomRightSideWall"] = bottom_right_wall
             case 5:
-                create_thumb_plates(doc, config, objects["TopPlate"], objects["BottomPlate"],
-                    "ThumbPlate")
+                top_thumb_plate = create_top_thumb_plate(doc, config, objects["TopPlate"], objects["BottomPlate"],
+                    "TopThumbPlate")
+                objects["TopThumbPlate"] = top_thumb_plate
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -249,6 +254,39 @@ def account_for_kerf(number, kerf, hole=False):
     return kerfed
 
 
+def is_same_vector_vertex(v_1, v_2):
+    v_1_x = None
+    v_1_y = None
+    v_1_z = None
+    v_2_x = None
+    v_2_y = None
+    v_2_z = None
+    try:
+        # Vector:
+        v_1_x = v_1.x
+        v_1_y = v_1.y
+        v_1_z = v_1.z
+    except:
+        # Vertex:
+        v_1_x = v_1.X
+        v_1_y = v_1.Y
+        v_1_z = v_1.Z
+    try:
+        v_2_x = v_2.x
+        v_2_y = v_2.y
+        v_2_z = v_2.z
+    except:
+        v_2_x = v_2.X
+        v_2_y = v_2.Y
+        v_2_z = v_2.Z
+
+    if ((v_1_x is None) or (v_2_x is None) or (v_1_y is None)
+            or (v_2_y is None) or (v_1_z is None) or (v_2_z is None)):
+        raise Exception("Error: Could not compare vectors/vertices.")
+
+    return isclose(v_1_x, v_2_x) and isclose(v_1_y, v_2_y) and isclose(v_1_z, v_2_z)
+
+
 def vector_to_vertex(vector):
     return Part.Vertex(vector.x, vector.y, vector.z)
 
@@ -293,9 +331,7 @@ def expand_face(face, expand_by):
 
 
 def get_long_edge_vertices(config, object):
-    longer_than = max(
-        float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
-        float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
+    longer_than = get_longer_than(config)
     long_edges = get_long_edges(object, longer_than)
     #prints(f"TEST: found {len(long_edges)}.", 4)
     long_edge_vertices = get_rim_vertices(long_edges)
@@ -403,6 +439,71 @@ def make_solid_from_face(doc, face, extrude_vector, object_name):
     new_object = doc.addObject("Part::Feature", object_name)
     new_object.Shape = new_part
     return new_object
+
+
+#----------------------------------------------------------------------x---------------------------
+# Keyboard creation utility functions.
+
+
+def create_switch_hole_faces(config, layout, edge_corner, tangent_x, tangent_y):
+    #kerf = config.get("General", "LASER_KERF_MM")
+    (switch_x, switch_y, distance_x, distance_y) = get_switch_data(config)
+
+    corner = VECTOR_ZERO
+    if edge_corner is not None:
+        edge_buffer = get_edge_buffer(config)
+        corner = edge_corner + edge_buffer*(tangent_x+tangent_y)
+
+    switch_holes = None
+    i = 0
+    for coordinate in layout:
+        (placement_x, placement_y) = coordinate
+        start_x = float(placement_x) * distance_x
+        start_y = float(placement_y) * distance_y
+        end_x = start_x + switch_x
+        end_y = start_x + switch_y
+
+        corners = []
+        c1 = start_x*tangent_x + start_y*tangent_y
+        c2 = (start_x+switch_x)*tangent_x + start_y*tangent_y
+        c3 = (start_x+switch_x)*tangent_x + (start_y+switch_y)*tangent_y
+        c4 = start_x*tangent_x + (start_y+switch_y)*tangent_y
+        corners.append(corner + c1)
+        corners.append(corner + c2)
+        corners.append(corner + c3)
+        corners.append(corner + c4)
+        face = make_face_from_corners(corners)
+
+        if switch_holes is None:
+            switch_holes = face
+        else:
+            switch_holes = switch_holes.fuse(face)
+
+        i = i + 1
+
+    prints(f"Success: created {i} switch hole faces.", 2)
+    return switch_holes
+
+
+def get_edge_buffer(config):
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    extra = float(config.get("Keyboard", "PLATE_EXTRA_MM"))
+    return 2*thickness + extra
+
+
+def get_longer_than(config):
+    longer_than = max(
+        float(config.get("Keyboard", "SWITCH_LENGTH_X_MM")),
+        float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM")))
+    return longer_than
+
+
+def get_switch_data(config):
+    switch_x = float(config.get("Keyboard", "SWITCH_LENGTH_X_MM"))
+    switch_y = float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM"))
+    distance_x = float(config.get("Keyboard", "SWITCH_DISTANCE_X_MM"))
+    distance_y = float(config.get("Keyboard", "SWITCH_DISTANCE_Y_MM"))
+    return (switch_x, switch_y, distance_x, distance_y)
 
 
 #----------------------------------------------------------------------x---------------------------
@@ -1022,50 +1123,138 @@ def make_bottom_right_side_wall_cut_shape(doc, shape, thickness, object_name):
 
 
 #----------------------------------------------------------------------x---------------------------
-# The functions that create the top and bottom plates for thumb keys.
+# The functions that create the top plate for thumb switches.
 
 
-def create_thumb_plates(doc, config, top_plate, bottom_plate, object_name):
-    thumb_switch_holes = create_switch_holes(doc, LAYOUT_LEFT_THUMB, config,
-        f"{object_name}SwitchHole")
-    switches_name = "LeftThumbSwitchHoles"
-    thumb_switches = doc.addObject("Part::MultiFuse", switches_name)
-    thumb_switches.Shapes = thumb_switch_holes
-    doc.recompute()
+def create_top_thumb_plate(doc, config, top_plate, bottom_plate, object_name):
+    # Create the base thumb plate.
+    prints("Making the face of the thumb plate base...", 2)
+    thumb_base_face = make_thumb_plate_base_face(doc, config, top_plate)
+    #thumb_base_face_TEST = doc.addObject("Part::Feature", f"{object_name}BaseTEST")
+    #thumb_base_face_TEST.Shape = thumb_base_face
+    prints("Success.", 3)
 
-    thumb_plate_switchless = create_top_thumb_plate(doc, config, thumb_switches.Shape.BoundBox,
-        f"{object_name}Switchless")
-    prints(f"Created thumb plate solid from the corners.", 2)
+    # The origin corner for the switch holes is the one with smallest x.
+    edge_corner = sorted(thumb_base_face.Vertexes, key=lambda v: v.X)[0]
+    (tangent_1, tangent_2) = thumb_base_face.tangentAt(0, 0)
+    # Is there a better way to get suitable tangents than just knowing?
+    tangent_x = -tangent_2
+    tangent_y = -tangent_1
+    #prints(f"TEST: tangent_x: {format_vector(tangent_x)}, tangent_y: {format_vector(tangent_y)}.", 2)
 
-    top_thumb_plate = make_switch_holes(doc, thumb_plate_switchless, thumb_switches,
-        f"{object_name}Base")
-    prints(f"Made switch holes into the thumb plate.", 2)
+    switch_hole_faces = create_switch_hole_faces(config, LAYOUT_LEFT_THUMB,
+        vertex_to_vector(edge_corner), tangent_x, tangent_y)
+    #thumb_switches_TEST = doc.addObject("Part::Feature", f"{object_name}SwitchesTEST")
+    #thumb_switches_TEST.Shape = switch_hole_faces
 
-    prints("TODO: find thumb edges on top and bottom plate.", 2)
-    prints("TODO: align top thumb plate with the thumb edge and tilt.", 2)
-    prints("TODO: expand top thumb edge to cover a trapezoidal area.", 2)
-    prints("TODO: make bottom thumb plate.", 2)
-    prints("TODO: find thumb edges on top and bottom plate.", 2)
+    thumb_plate_face = thumb_base_face.cut(switch_hole_faces)
+    type = thumb_plate_face.ShapeType
+    if type != "Face":
+        prints(f"Resulting thumb_plate_face is a '{type}'; extract a face.", 2)
+        thumb_plate_face = thumb_plate_face.Faces[0]
+    #thumb_plate_TEST = doc.addObject("Part::Feature", f"{object_name}TEST")
+    #thumb_plate_TEST.Shape = thumb_plate_face
+    prints("Made switch holes into thumb plate base.", 2)
+
+    normal = thumb_plate_face.normalAt(0, 0)
+    if normal.x < 0:
+        normal = -normal
+    extrude_vector = float(config.get("Keyboard", "CASE_THICKNESS_MM")) * normal
+    thumb_plate = make_solid_from_face(doc, thumb_plate_face, extrude_vector, object_name)
+    prints("Created top thumb plate.", 2)
+
+    return thumb_plate
 
 
-def create_top_thumb_plate(doc, config, bound_box, object_name):
-    enlarge_by = (2*float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-        + float(config.get("Keyboard", "PLATE_EXTRA_MM")))
-    min_x = bound_box.XMin - enlarge_by
-    max_x = bound_box.XMax + enlarge_by
-    min_y = bound_box.YMin - enlarge_by
-    max_y = bound_box.YMax + enlarge_by
+def make_thumb_plate_base_face(doc, config, top_plate):
+    (thumb_edge, max_z) = find_thumb_edge(config, top_plate)
+    prints("Found thumb edge.", 3)
+
+    # Find the normal of the bottom face of the top plate.
+    bottom_face_normal = None
+    faces = sorted(top_plate.Shape.Faces, key=lambda f: f.Area, reverse=True)
+    for f in faces:
+        normal = f.normalAt(0, 0)
+        # The wanted normal points "down" (negative z).
+        if normal.z < 0:
+            bottom_face_normal = normal
+            break
+    if bottom_face_normal is None:
+        raise Exception("Error: could not find the normal of the bottom side of the top plate.")
+    #prints(f"TEST: normal of top plate bottom: {format_vector(bottom_face_normal)}", 3)
+
+    # Make a crude estimate of how far down the edge should be extruded.
+    extrude_distance = 2 * max_z
+
+    # Extrude the edge into the same direction as the top plate's
+    # bottom face normal to get a starting 90 degree angle between
+    # the top plate and the thumb plate.
+    thumb_face_shape = thumb_edge.extrude(extrude_distance * bottom_face_normal)
+    prints("Made the face of thumb plate base.", 3)
+
+    # Use one of the edge's vertices as a base point.
+    base_point = vertex_to_vector(thumb_edge.Vertexes[0])
+    # Rotate the face around the edge (edge's tangent is an axis).
+    degrees = float(config.get("Keyboard", "THUMB_PLATE_TILT_ANGLE_DEG"))
+    thumb_face_shape.rotate(base_point, thumb_edge.tangentAt(0), degrees)
+    prints(f"Tilted thumb plate base {degrees:.2f} degrees.", 3)
+
+    thumb_face = trim_thumb_plate_base_face(config, thumb_face_shape)
+    prints(f"Trimmed thumb plate base.", 3)
+
+    # The face is a shell after the cut? Return the first (and only)
+    # face in its shape then.
+    if thumb_face.ShapeType != "Face":
+        prints(f"Resulting thumb_face is a '{thumb_face.ShapeType}'; extract a face.", 3)
+        thumb_face = thumb_face.Faces[0]
+    return thumb_face
+
+
+"""
+Finds the edge of the top plate where the thumb plate should attach.
+The edge has a maximum x vertex but no maximum y vertex.
+"""
+def find_thumb_edge(config, top_plate):
+    longer_than = get_longer_than(config)
+    long_edges = get_long_edges(top_plate, longer_than)
+    rim_vertices = get_rim_vertices(long_edges)
+    (min_x, min_y, min_z, max_x, max_y, max_z) = get_mins_maxes_from_vertices(rim_vertices)
+
+    thumb_edge = None
+    for e in long_edges:
+        # The edge is attached to maximum x.
+        if isclose(e.Vertexes[0].X, max_x) or isclose(e.Vertexes[1].X, max_x):
+            # The right one is not attached to maximum y.
+            if not (isclose(e.Vertexes[0].Y, max_y) or isclose(e.Vertexes[1].Y, max_y)):
+                thumb_edge = e
+                break
+
+    if thumb_edge is None:
+        raise Exception("Error: could not find thumb edge on top plate.")
+
+    #prints(f"TEST: thumb_edge: {format_vertices(thumb_edge.Vertexes)}", 3)
+    return (thumb_edge, max_z)
+
+
+"""
+Trims off the part of the face that goes below CASE_THICKNESS_MM
+on the z-axis.
+"""
+def trim_thumb_plate_base_face(config, thumb_face_shape):
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    bound_box = thumb_face_shape.BoundBox
+
     corners = []
-    corners.append(FreeCAD.Vector(min_x, min_y, 0.0))
-    corners.append(FreeCAD.Vector(max_x, min_y, 0.0))
-    corners.append(FreeCAD.Vector(max_x, max_y, 0.0))
-    corners.append(FreeCAD.Vector(min_x, max_y, 0.0))
-    thumb_face = make_face_from_corners(corners)
-    #thumb_face_TEST = doc.addObject("Part::Feature", f"{object_name}FaceTEST")
-    #thumb_face_TEST.Shape = thumb_face
-    extrude_vector = float(config.get("Keyboard", "CASE_THICKNESS_MM")) * VECTOR_ONE_Z
-    thumb_plate_switchless = make_solid_from_face(doc, thumb_face, extrude_vector, object_name)
-    return thumb_plate_switchless
+    corners.append(FreeCAD.Vector(bound_box.XMin, bound_box.YMin, thickness))
+    corners.append(FreeCAD.Vector(bound_box.XMax, bound_box.YMin, thickness))
+    corners.append(FreeCAD.Vector(bound_box.XMax, bound_box.YMax, thickness))
+    corners.append(FreeCAD.Vector(bound_box.XMin, bound_box.YMax, thickness))
+    trim_box_face = make_face_from_corners(corners)
+
+    trim_box = trim_box_face.extrude((bound_box.ZMin-thickness) * VECTOR_ONE_Z)
+    thumb_face = thumb_face_shape.cut(trim_box)
+
+    return thumb_face
 
 
 #----------------------------------------------------------------------x---------------------------
