@@ -44,7 +44,7 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 5
+START_AT_STEP = 0
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
@@ -91,8 +91,8 @@ def main():
                 doc = create_document(base_document_name)
             case 1:
                 switch_hole_list = create_switch_holes(doc, LAYOUT_LEFT, config, "SwitchHole")
-                # TODO:
-                #faces = create_switch_hole_faces(config, LAYOUT_LEFT, None, VECTOR_ONE_X, VECTOR_ONE_Y)
+                # Well, for various reasons, this did NOT work:
+                #create_switch_hole_faces(config, LAYOUT_LEFT, None, VECTOR_ONE_X, VECTOR_ONE_Y)
 
                 # Now that there are objects, adjust the view:
                 Gui.activeDocument().activeView().viewIsometric()
@@ -486,9 +486,19 @@ def create_switch_hole_faces(config, layout, edge_corner, tangent_x, tangent_y):
 
 
 def get_edge_buffer(config):
+    # Edge buffer should be:
+    #   1) at least the length from the edge of the switch to the
+    #      edge of the key cap,
+    #   2) plus the thickness of the case material because a wall
+    #      will most likely be right under the edge and
+    #   3) maybe some extra.
+    (switch_x, switch_y, distance_x, distance_y) = get_switch_data(config)
+    min_distance_x = (distance_x-switch_x) / 2.0
+    min_distance_y = (distance_y-switch_y) / 2.0
+    min_distance = max(min_distance_x, min_distance_y)
     thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
     extra = float(config.get("Keyboard", "PLATE_EXTRA_MM"))
-    return 2*thickness + extra
+    return min_distance + thickness + extra
 
 
 def get_longer_than(config):
@@ -645,10 +655,7 @@ def get_top_plate_expansion(config):
     switch_len_y = float(config.get("Keyboard", "SWITCH_LENGTH_Y_MM"))
     switch_hypotenuse = sqrt(switch_len_x**2 + switch_len_y**2)
     #prints(f"TEST: switch hypotenuse: {switch_hypotenuse:.2f}.", 2)
-    expand_by = (switch_hypotenuse/2.0
-        + 2.0*float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-        + float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-        + float(config.get("Keyboard", "PLATE_EXTRA_MM")))
+    expand_by = switch_hypotenuse/2.0 + get_edge_buffer(config)
     #prints(f"TEST: expand_by: {expand_by:.2f}.", 2)
     return expand_by
 
@@ -1142,8 +1149,13 @@ def create_top_thumb_plate(doc, config, top_plate, bottom_plate, object_name):
     tangent_y = -tangent_1
     #prints(f"TEST: tangent_x: {format_vector(tangent_x)}, tangent_y: {format_vector(tangent_y)}.", 2)
 
+    # Nudge the origin corner a little to the "y" direction to give
+    # more space for the switches.
+    edge_corner = (vertex_to_vector(edge_corner)
+        + float(config.get("Keyboard", "THUMB_PLATE_EXTRA_Y_MM"))*tangent_y)
+
     switch_hole_faces = create_switch_hole_faces(config, LAYOUT_LEFT_THUMB,
-        vertex_to_vector(edge_corner), tangent_x, tangent_y)
+        edge_corner, tangent_x, tangent_y)
     #thumb_switches_TEST = doc.addObject("Part::Feature", f"{object_name}SwitchesTEST")
     #thumb_switches_TEST.Shape = switch_hole_faces
 
@@ -1161,7 +1173,7 @@ def create_top_thumb_plate(doc, config, top_plate, bottom_plate, object_name):
         normal = -normal
     extrude_vector = float(config.get("Keyboard", "CASE_THICKNESS_MM")) * normal
     thumb_plate = make_solid_from_face(doc, thumb_plate_face, extrude_vector, object_name)
-    prints("Created top thumb plate.", 2)
+    prints("Success.", 2)
 
     return thumb_plate
 
