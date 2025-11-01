@@ -48,7 +48,7 @@ START_AT_STEP = 0
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 5
+STOP_AT_STEP = 6
 STEPS = {
     0: "Creating document...",
     1: "Creating switch holes...",
@@ -116,6 +116,10 @@ def main():
                 top_thumb_plate = create_top_thumb_plate(doc, config, objects["TopPlate"], objects["BottomPlate"],
                     "TopThumbPlate")
                 objects["TopThumbPlate"] = top_thumb_plate
+            case 6:
+                bottom_thumb_plate = create_bottom_plate(doc, config, objects["TopThumbPlate"],
+                    "BottomThumbPlate")
+                objects["BottomThumbPlate"] = bottom_thumb_plate
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -840,14 +844,32 @@ def get_rim_vertices_from_top_plate(top_plate, config):
     #prints(f"TEST: min_x: {min_x:.2f}; min_y: {min_y:.2f}; min_z: {min_z:.2f}", 3)
     #prints(f"TEST: max_x: {max_x:.2f}; max_y: {max_y:.2f}; max_z: {max_z:.2f}", 3)
 
-    vertices = select_bottom_plate_vertices(rim_vertices, min_x)
+    if "Thumb" in top_plate.Name:
+        return select_bottom_thumb_plate_vertices(rim_vertices, max_z, min_z, min_y)
+    else:
+        return select_bottom_plate_vertices(rim_vertices, min_x)
 
-    # Switch the places of the last two vertices to order the rim
-    # correctly.
-    should_be_last = vertices[len(vertices) - 2]
-    vertices[len(vertices) - 2] = vertices[len(vertices) - 1]
+
+"""
+Gets the correct top plate outer rim vertices for creating
+the bottom thumb plate.
+"""
+def select_bottom_thumb_plate_vertices(rim_vertices, max_z, min_z, min_y):
+    rim_vertices.sort(key=lambda v: v.Y)
+    rim_vertices.sort(key=lambda v: v.Z)
+
+    # Discard the min_z vertex that is near min_y and the
+    # max_z vertex, so the first and last ones in the list.
+    vertices = rim_vertices[1:-1]
+    #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 4)
+
+    # Switch the places of the last and third last vertices
+    # to order the rim correctly.
+    vertices.sort(key=lambda v: v.Y)
+    should_be_last = vertices[len(vertices) - 3]
+    vertices[len(vertices) - 3] = vertices[len(vertices) - 1]
     vertices[len(vertices) - 1] = should_be_last
-    #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 3)
+    #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 4)
 
     return vertices
 
@@ -855,10 +877,6 @@ def get_rim_vertices_from_top_plate(top_plate, config):
 """
 Gets the correct top plate outer rim vertices for creating
 the bottom plate.
-(This could also be done by projecting each vertex of a pair up and
-down along the z-axis and seeing if the resulting line intersects
-with both the top and bottom face of the top plate; the wanted
-vertex only intersects with one.)
 """
 def select_bottom_plate_vertices(rim_vertices, min_x):
     # The vertices are sorted (first by y, then by x) into pairs.
@@ -883,6 +901,14 @@ def select_bottom_plate_vertices(rim_vertices, min_x):
             vertices.append(vertex_1)
         i = i + 2
     #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 4)
+
+    # Switch the places of the last two vertices to order the rim
+    # correctly.
+    should_be_last = vertices[len(vertices) - 2]
+    vertices[len(vertices) - 2] = vertices[len(vertices) - 1]
+    vertices[len(vertices) - 1] = should_be_last
+    #prints(f"TEST: {len(vertices)} vertices: {format_vertices(vertices)}", 4)
+
     return vertices
 
 
