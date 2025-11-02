@@ -44,11 +44,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 0
+START_AT_STEP = 7
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 6
+STOP_AT_STEP = 7
 STEPS = {
     0: "Creating document...",
     1: "Creating switch holes...",
@@ -120,6 +120,15 @@ def main():
                 bottom_thumb_plate = create_bottom_plate(doc, config, objects["TopThumbPlate"],
                     "BottomThumbPlate")
                 objects["BottomThumbPlate"] = bottom_thumb_plate
+            case 7:
+                (connect_support_bottom, support_top, short_side_wall, medium_side_wall,
+                    long_side_wall) \
+                    = create_wrist_support(doc, config, objects["BottomPlate"], "WristSupport")
+                objects["WristSupportConnectBottom"] = connect_support_bottom
+                objects["WristSupportTop"] = support_top
+                objects["WristSupportShortSideWall"] = short_side_wall
+                objects["WristSupportMediumSideWall"] = medium_side_wall
+                objects["WristSupportLongSideWall"] = long_side_wall
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -518,6 +527,19 @@ def get_switch_data(config):
     distance_x = float(config.get("Keyboard", "SWITCH_DISTANCE_X_MM"))
     distance_y = float(config.get("Keyboard", "SWITCH_DISTANCE_Y_MM"))
     return (switch_x, switch_y, distance_x, distance_y)
+
+
+def get_wrist_support_dimensions(config):
+    length_x = float(config.get("Keyboard", "WRIST_SUPPORT_LENGTH_X_MM"))
+    length_y = float(config.get("Keyboard", "WRIST_SUPPORT_LENGTH_Y_MM"))
+    corner_cut_x = float(config.get("Keyboard", "WRIST_SUPPORT_CORNER_CUT_X_MM"))
+    corner_cut_y = float(config.get("Keyboard", "WRIST_SUPPORT_CORNER_CUT_Y_MM"))
+    return (length_x, length_y, corner_cut_x, corner_cut_y)
+
+
+def get_wrist_support_height(config):
+    return (float(config.get("Keyboard", "WRIST_SUPPORT_WALL_HEIGHT_MM"))
+        + float(config.get("Keyboard", "CASE_THICKNESS_MM")))
 
 
 #----------------------------------------------------------------------x---------------------------
@@ -1293,6 +1315,172 @@ def trim_thumb_plate_base_face(config, thumb_face_shape):
     thumb_face = thumb_face_shape.cut(trim_box)
 
     return thumb_face
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that create the wrist support piece.
+
+
+def create_wrist_support(doc, config, bottom_plate, object_name):
+    prints("Creating the connecting piece...", 2)
+    connect_object = create_wrist_support_connect(doc, config, bottom_plate,
+        f"{object_name}Connect")
+
+    prints("Creating the bottom piece...", 2)
+    (support_bottom_object, short_wall_corners, medium_wall_corners, long_wall_corners) \
+        = create_wrist_support_bottom(doc, config, connect_object, f"{object_name}Bottom")
+
+    prints("Creating the top piece...", 2)
+    support_top_object = create_wrist_support_top(doc, config, support_bottom_object,
+        f"{object_name}Top")
+
+    prints("Creating side walls...", 2)
+    centre = support_bottom_object.Shape.CenterOfGravity
+    short_side_wall_object = create_wrist_support_side_wall(doc, config,
+        short_wall_corners, centre, f"{object_name}ShortSideWall")
+    medium_side_wall_object = create_wrist_support_side_wall(doc, config,
+        medium_wall_corners, centre, f"{object_name}MediumSideWall")
+    long_side_wall_object = create_wrist_support_side_wall(doc, config,
+        long_wall_corners, centre, f"{object_name}LongSideWall")
+
+    # TODO: This conserves the edges/vertices inside the shape, how to remove?
+    prints(f"Fusing connection and bottom pieces...", 2)
+    fused = connect_object.Shape.fuse(support_bottom_object.Shape)
+    connect_bottom_object = doc.addObject("Part::Feature", f"{object_name}ConnectBottom")
+    connect_bottom_object.Shape = fused
+    doc.removeObject(f"{object_name}Bottom")
+    doc.removeObject(f"{object_name}Connect")
+    prints(f"Success: created {object_name}ConnectBottom.", 3)
+
+    return (connect_bottom_object, support_top_object, short_side_wall_object,
+        medium_side_wall_object, long_side_wall_object)
+
+
+def create_wrist_support_connect(doc, config, bottom_plate, object_name):
+    # Find the vertices where the support will mainly attach.
+    smaller_y_vertices = (sorted(bottom_plate.Shape.Vertexes, key=lambda v: v.Y))[:6]
+    larger_x_vertices = (sorted(smaller_y_vertices, key=lambda v: v.X, reverse=True))[:4]
+    starting_vertices = (sorted(larger_x_vertices, key=lambda v: v.Z))[:2]
+    #prints(f"TEST: starting_vertices: {format_vertices(starting_vertices)}", 3)
+    if len(starting_vertices) != 2:
+        raise Exception(f"Error: got {len(starting_vertices)} starting vertices (should be two).")
+
+    # Find the corresponding side face of the bottom plate.
+    starting_face = None
+    f = 0
+    for face in bottom_plate.Shape.Faces:
+        #prints(f"TEST: face {f}:", 3)
+        f = f + 1
+        sames = 0
+        v = 0
+        for vertex in face.Vertexes:
+            if (is_same_vector_vertex(starting_vertices[0], vertex)
+                    or is_same_vector_vertex(starting_vertices[1], vertex)):
+                sames = sames + 1
+            #prints(f"TEST: vertex {v}, sames: {sames}", 4)
+            v = v + 1
+        if sames == 2:
+            starting_face = face
+            break
+
+    if starting_face is None:
+        raise Exception("Error: could not find starting face on bottom plate.")
+
+    normal = starting_face.normalAt(0, 0)
+    if normal.x < 0:
+        normal = -normal
+    size = (float(config.get("Keyboard", "WRIST_CONNECT_LENGTH_Y_MM"))
+        + float(config.get("Keyboard", "WRIST_SUPPORT_LENGTH_Y_MM")))
+    connect_object = make_solid_from_face(doc, starting_face, (size * normal),
+        f"{object_name}")
+
+    prints(f"Success.", 3)
+    return connect_object
+
+
+def create_wrist_support_bottom(doc, config, connect_object, object_name):
+    # Find the directions where to create the corners.
+    direction_x = None
+    direction_y = None
+    for face in connect_object.Shape.Faces:
+        normal = face.normalAt(0, 0)
+        if (normal.x < 0) and (normal.y < 0):
+            direction_x = normal
+        elif (normal.x < 0) and (normal.y > 0):
+            direction_y = normal
+
+    if (direction_x is None) or (direction_y is None):
+        raise Exception("Error: could not find direction x or y from the faces.")
+
+    # Find the origin corner.
+    max_x_vertex = (sorted(connect_object.Shape.Vertexes, key=lambda v: v.X, reverse=True))[0]
+
+    # The starting corner has a displacement.
+    displacement = float(config.get("Keyboard", "WRIST_SUPPORT_DISPLACE_X_MM")) * direction_x
+    max_x_corner = vertex_to_vector(max_x_vertex) + displacement
+    max_x_corner.z = 0.0 # Just in case.
+
+    (length_x, length_y, corner_cut_x, corner_cut_y) = get_wrist_support_dimensions(config)
+    corners = []
+    min_y_corner = max_x_corner + length_x*direction_x
+    min_x_corner = max_x_corner + length_x*direction_x + length_y*direction_y
+    max_y_corner = max_x_corner + corner_cut_x*direction_x + length_y*direction_y
+    cut_x_corner = max_x_corner + corner_cut_y*direction_y
+    corners = [max_x_corner, min_y_corner, min_x_corner, max_y_corner, cut_x_corner]
+    support_bottom_face = make_face_from_corners(corners)
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    extrude_vector = thickness * VECTOR_ONE_Z
+    support_bottom_object = make_solid_from_face(doc, support_bottom_face, extrude_vector,
+        f"{object_name}")
+
+    # Save the corners for side walls.
+    short_wall_corners = [min_y_corner, min_x_corner]
+    medium_wall_corners = [min_x_corner - thickness*direction_x, max_y_corner]
+    long_wall_corners = [min_y_corner - thickness*direction_x, max_x_corner]
+
+    prints(f"Success.", 3)
+    return (support_bottom_object, short_wall_corners, medium_wall_corners, long_wall_corners)
+
+
+def create_wrist_support_top(doc, config, support_bottom_object, object_name):
+    support_top_shape = support_bottom_object.Shape.copy()
+    support_top_object = doc.addObject("Part::Feature", f"{object_name}")
+    support_top_object.Shape = support_top_shape
+    top_place = get_wrist_support_height(config)
+    top_place = top_place + float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    support_top_object.Placement.Base = support_top_object.Placement.Base + top_place*VECTOR_ONE_Z
+    prints(f"Success: created {object_name}.", 3)
+    return support_top_object
+
+
+def create_wrist_support_side_wall(doc, config, wall_corners, centre, object_name):
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    height = get_wrist_support_height(config)
+    for c in wall_corners:
+        c.z = thickness
+
+    corners = [
+        wall_corners[0] + height*VECTOR_ONE_Z,
+        wall_corners[0],
+        wall_corners[1],
+        wall_corners[1] + height*VECTOR_ONE_Z,
+        ]
+    side_wall_face = make_face_from_corners(corners)
+
+    normal = side_wall_face.normalAt(0, 0)
+    #prints(f"TEST: {object_name} normal: {format_vector(normal)}", 3)
+    face_centre_minus = side_wall_face.CenterOfGravity - normal
+    face_centre_plus = side_wall_face.CenterOfGravity + normal
+    distance_minus = centre.distanceToPoint(face_centre_minus)
+    distance_plus = centre.distanceToPoint(face_centre_plus)
+    #prints(f"TEST: distance_minus: {distance_minus:.2f}; distance_plus: {distance_plus:.2f}", 3)
+    if distance_minus < distance_plus:
+        normal = -normal
+    extrude_vector = thickness * normal
+    side_wall_object = make_solid_from_face(doc, side_wall_face, extrude_vector, object_name)
+
+    prints(f"Success: created {object_name}.", 3)
+    return side_wall_object
 
 
 #----------------------------------------------------------------------x---------------------------
