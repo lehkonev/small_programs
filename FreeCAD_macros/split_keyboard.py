@@ -32,6 +32,7 @@ LAYOUT_LEFT = [
               (11, 10), (12, 10), (13, 10), (14, 10), (15, 10)
 ]
 LAYOUT_LEFT_THUMB = [
+    (0, 2),  (1, 2),  (2, 2),
     (0, 1),  (1, 1),  (2, 1),
     (0, 0),  (1, 0),  (2, 0),
 ]
@@ -44,22 +45,23 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 7
+START_AT_STEP = 8
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 7
+STOP_AT_STEP = 8
 STEPS = {
     0: "Creating document...",
-    1: "Creating switch holes...",
+    1: "Creating top plate switch holes...",
     2: "Creating top plate...",
     3: "Creating bottom plate...",
     4: "Creating side walls...",
     5: "Creating top thumb plate...",
     6: "Creating bottom thumb plate...",
     7: "Creating wrist support...",
-    8: "Creating enclosure that connects the halves...",
-    9: "Creating and connecting right side...",
+    8: "Creating support structures...",
+    9: "Creating enclosure that connects the halves...",
+    10: "Creating and connecting right side...",
 }
 
 def main():
@@ -113,22 +115,26 @@ def main():
                 objects["BottomLeftSideWall"] = bottom_left_wall
                 objects["BottomRightSideWall"] = bottom_right_wall
             case 5:
-                top_thumb_plate = create_top_thumb_plate(doc, config, objects["TopPlate"], objects["BottomPlate"],
-                    "TopThumbPlate")
+                top_thumb_plate = create_top_thumb_plate(doc, config, objects["TopPlate"],
+                    objects["BottomPlate"], "TopThumbPlate")
                 objects["TopThumbPlate"] = top_thumb_plate
             case 6:
                 bottom_thumb_plate = create_bottom_plate(doc, config, objects["TopThumbPlate"],
                     "BottomThumbPlate")
                 objects["BottomThumbPlate"] = bottom_thumb_plate
             case 7:
-                (connect_support_bottom, support_top, short_side_wall, medium_side_wall,
-                    long_side_wall) \
-                    = create_wrist_support(doc, config, objects["BottomPlate"], "WristSupport")
-                objects["WristSupportConnectBottom"] = connect_support_bottom
-                objects["WristSupportTop"] = support_top
-                objects["WristSupportShortSideWall"] = short_side_wall
-                objects["WristSupportMediumSideWall"] = medium_side_wall
-                objects["WristSupportLongSideWall"] = long_side_wall
+                (connect, top, short, medium, long) = create_wrist_support(doc, config,
+                    objects["BottomPlate"], "WristSupport")
+                objects["WristSupportConnectBottom"] = connect
+                objects["WristSupportTop"] = top
+                objects["WristSupportShortSideWall"] = short
+                objects["WristSupportMediumSideWall"] = medium
+                objects["WristSupportLongSideWall"] = long
+            case 8:
+                (lower, upper) = create_top_plate_supports(doc, config,
+                    objects["BottomLeftSideWall"], "TopPlateSupport")
+                objects["TopPlateSupportLower"] = lower
+                objects["TopPlateSupportUpper"] = upper
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -1481,6 +1487,62 @@ def create_wrist_support_side_wall(doc, config, wall_corners, centre, object_nam
 
     prints(f"Success: created {object_name}.", 3)
     return side_wall_object
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that create support structures.
+
+
+def create_top_plate_supports(doc, config, bottom_left_wall, object_name):
+    # Create the support structures; they're copies of the bottom
+    # left side wall but not as long in the positive x direction.
+    support_lower_y_shape = bottom_left_wall.Shape.copy()
+    support_upper_y_shape = bottom_left_wall.Shape.copy()
+
+    # To calculate the minimum x coordinate of the shape that trims the
+    # supports, take the minimum x vertex of the original shape and add
+    # the wanted length to it.
+    min_vertex = (sorted(bottom_left_wall.Shape.Vertexes, key=lambda v: v.X))[0]
+    min_x = min_vertex.X
+    trim_start_lower = min_x + float(config.get("Keyboard", "TOP_PLATE_LOWER_SUPPORT_LENGTH_X_MM"))
+    trim_start_upper = min_x + float(config.get("Keyboard", "TOP_PLATE_UPPER_SUPPORT_LENGTH_X_MM"))
+    # The rest of the shape can just be a big box; just take the
+    # biggest length of the original structure.
+    sorted_edges = sorted(bottom_left_wall.Shape.Edges, key=lambda e: e.Length, reverse=True)
+    dimension = sorted_edges[0].Length
+    # Create the corners for the trim boxes.
+    corners_lower = [
+        FreeCAD.Vector(trim_start_lower, min_vertex.Y - dimension, min_vertex.Z + dimension),
+        FreeCAD.Vector(trim_start_lower, min_vertex.Y - dimension, min_vertex.Z - dimension),
+        FreeCAD.Vector(trim_start_lower, min_vertex.Y + dimension, min_vertex.Z - dimension),
+        FreeCAD.Vector(trim_start_lower, min_vertex.Y + dimension, min_vertex.Z + dimension),
+        ]
+    corners_upper = []
+    for corner in corners_lower:
+        vector = FreeCAD.Vector(trim_start_upper, corner.y, corner.z)
+        corners_upper.append(vector)
+    lower_face = make_face_from_corners(corners_lower)
+    upper_face = make_face_from_corners(corners_upper)
+    lower_trim_box = lower_face.extrude(dimension * VECTOR_ONE_X)
+    upper_trim_box = upper_face.extrude(dimension * VECTOR_ONE_X)
+    # Perform the trim.
+    support_lower_y_shape = support_lower_y_shape.cut(lower_trim_box)
+    support_upper_y_shape = support_upper_y_shape.cut(upper_trim_box)
+
+    # Create the objects.
+    support_lower_y = doc.addObject("Part::Feature", f"{object_name}Lower")
+    support_upper_y = doc.addObject("Part::Feature", f"{object_name}Upper")
+    support_lower_y.Shape = support_lower_y_shape
+    support_upper_y.Shape = support_upper_y_shape
+
+    # Move them to the correct place.
+    lower_place = float(config.get("Keyboard", "TOP_PLATE_LOWER_SUPPORT_DISTANCE_Y_MM"))
+    upper_place = float(config.get("Keyboard", "TOP_PLATE_UPPER_SUPPORT_DISTANCE_Y_MM"))
+    support_lower_y.Placement.Base = support_lower_y.Placement.Base + lower_place*VECTOR_ONE_Y
+    support_upper_y.Placement.Base = support_upper_y.Placement.Base + upper_place*VECTOR_ONE_Y
+
+    prints(f"Success: created {object_name}s.", 3)
+    return (support_lower_y, support_upper_y)
 
 
 #----------------------------------------------------------------------x---------------------------
