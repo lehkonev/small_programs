@@ -6,6 +6,7 @@ FreeCAD version 1.0.0.
 Python version 3.11.
 """
 
+from draftgeoutils import geometry
 from math import atan, degrees, isclose, sqrt
 import BOPTools.JoinFeatures
 import configparser
@@ -135,6 +136,11 @@ def main():
                     objects["BottomLeftSideWall"], "TopPlateSupport")
                 objects["TopPlateSupportLower"] = lower
                 objects["TopPlateSupportUpper"] = upper
+                (lower_support, upper_support) = create_thumb_plate_supports(doc, config,
+                    objects["TopThumbPlate"], objects["BottomThumbPlate"], objects["TopPlate"],
+                    "ThumbPlateSupport")
+                objects["ThumbPlateSupportLower"] = lower_support
+                objects["ThumbPlateSupportUpper"] = upper_support
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -274,6 +280,11 @@ def account_for_kerf(number, kerf, hole=False):
 
 
 def is_same_vector_vertex(v_1, v_2):
+    if (v_1 is None) and (v_2 is None):
+        return True
+    elif (v_1 is None) or (v_2 is None):
+        return False
+
     v_1_x = None
     v_1_y = None
     v_1_z = None
@@ -361,9 +372,14 @@ def get_long_edges(object, longer_than):
     if (longer_than < 0) or isclose(longer_than, 0.0):
         raise Exception("Error: edge length comparison value has to be greater than 0.")
 
+    edges = []
+    try:
+        edges = object.Shape.Edges
+    except:
+        edges = object.Edges
     long_edges = []
     i = 1
-    for edge in object.Shape.Edges:
+    for edge in edges:
         if (edge.Length < 0) or isclose(edge.Length, 0.0):
             raise Exception("Error: invalid edge length: {edge.Length}.")
 
@@ -504,6 +520,29 @@ def create_switch_hole_faces(config, layout, edge_corner, tangent_x, tangent_y):
     return switch_holes
 
 
+def get_bottom_face_attributes(plate):
+    bottom_face = None
+    bottom_normal = None
+    bottom_tangent_1 = None
+    bottom_tangent_2 = None
+    longest_edge = 0.0
+    # Get the normal and tangents of the bottom face of the plate.
+    # Also the length of the longest edge of that face.
+    for face in sorted(plate.Shape.Faces, key=lambda f: f.Area, reverse=True):
+        face_normal = face.normalAt(0, 0)
+        if face_normal.z < 0:
+            bottom_face = face
+            bottom_normal = face_normal
+            (bottom_tangent_1, bottom_tangent_2) = face.tangentAt(0, 0)
+            longest_edge = sorted(face.Edges, key=lambda f: f.Length, reverse=True)[0]
+            break
+    #prints(f"TEST: bottom_normal: {format_vector(bottom_normal)}", 3)
+    #prints(f"TEST: bottom_tangent_1: {format_vector(bottom_tangent_1)}", 3)
+    #prints(f"TEST: bottom_tangent_2: {format_vector(bottom_tangent_2)}", 3)
+    #prints(f"TEST: longest_edge: {longest_edge.Length:.2f}", 3)
+    return (bottom_face, bottom_normal, bottom_tangent_1, bottom_tangent_2, longest_edge)
+
+
 def get_edge_buffer(config):
     # Edge buffer should be:
     #   1) at least the length from the edge of the switch to the
@@ -546,6 +585,50 @@ def get_wrist_support_dimensions(config):
 def get_wrist_support_height(config):
     return (float(config.get("Keyboard", "WRIST_SUPPORT_WALL_HEIGHT_MM"))
         + float(config.get("Keyboard", "CASE_THICKNESS_MM")))
+
+
+"""
+Finds the bottom edge of an object. Assumes that there is only one and
+that both of the edge's vertices have the same min z value.
+"""
+def find_min_z_edge_of_plate(long, plate):
+    long_edges = get_long_edges(plate, long)
+    bottom_edge = None
+    min_z = None
+    for edge in long_edges:
+        edge_z = edge.Vertexes[0].Z
+        if min_z is None:
+            min_z = edge_z
+        else:
+            min_z = min(min_z, edge_z)
+
+        if isclose(edge.Vertexes[0].Z, min_z) and isclose(edge.Vertexes[1].Z, min_z):
+            bottom_edge = edge
+
+    if bottom_edge is None:
+        raise Exception("Error: could not find bottom edge of top thumb plate.")
+
+    #prints(f"TEST: bottom_edge: {format_vertices(bottom_edge.Vertexes)}", 3)
+    return bottom_edge
+
+
+def find_second_to_max_x_of_switches(config, switch_plate):
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    longer_edges = get_long_edges(switch_plate, thickness)
+    not_longer = get_longer_than(config)
+    edges = list(filter(
+        lambda e: isclose(e.Length, not_longer) or (e.Length < not_longer),
+        longer_edges))
+    max_x_vertex = Part.Vertex(0.0, 0.0, 0.0)
+    second_to_max_x_vertex = None
+    for edge in edges:
+        for vertex in edge.Vertexes:
+            if vertex.X > max_x_vertex.X:
+                second_to_max_x_vertex = max_x_vertex
+                max_x_vertex = vertex
+    #prints(f"TEST: second_to_max_x_vertex: {format_vertex(second_to_max_x_vertex)}", 3)
+    #prints(f"TEST: max_x_vertex: {format_vertex(max_x_vertex)}", 3)
+    return second_to_max_x_vertex
 
 
 #----------------------------------------------------------------------x---------------------------
@@ -1494,6 +1577,7 @@ def create_wrist_support_side_wall(doc, config, wall_corners, centre, object_nam
 
 
 def create_top_plate_supports(doc, config, bottom_left_wall, object_name):
+    prints("Creating top plate supports...", 2)
     # Create the support structures; they're copies of the bottom
     # left side wall but not as long in the positive x direction.
     support_lower_y_shape = bottom_left_wall.Shape.copy()
@@ -1543,6 +1627,215 @@ def create_top_plate_supports(doc, config, bottom_left_wall, object_name):
 
     prints(f"Success: created {object_name}s.", 3)
     return (support_lower_y, support_upper_y)
+
+
+def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate, top_plate, object_name):
+    prints("Creating top thumb plate supports...", 2)
+    lower_support = create_lower_edge_thumb_plate_support(doc, config, top_thumb_plate,
+        bottom_thumb_plate, f"{object_name}Lower")
+    upper_support = create_upper_edge_thumb_plate_support(doc, config, top_thumb_plate,
+        bottom_thumb_plate, f"{object_name}Upper")
+
+    # If the top thumb plate doesn't have switch holes in the upper y
+    # area, the upper support might cut into the top plate. Check if
+    # this is the case and then trim the upper support. If it is
+    # trimmed, one vertex of the upper support touches the top plate
+    # (but not in reality because the corner is so sharp that enough
+    # of it will be lost due to kerf.)
+    upper_support = trim_upper_support(doc, config, top_plate, upper_support,
+        f"{object_name}Upper")
+
+    return (lower_support, upper_support)
+
+
+def create_lower_edge_thumb_plate_support(doc, config, top_plate, bottom_plate, object_name):
+    # The lower (smaller y) support will be under the shorter, more
+    # vertical edge of the bottom of the top thumb plate.
+    min_x_vertex = sorted(top_plate.Shape.Vertexes, key=lambda v: v.X)[0]
+    bottom_y_mins = sorted(bottom_plate.Shape.Vertexes, key=lambda v: v.Y)[:6]
+    bottom_corners = sorted(bottom_y_mins, key=lambda v: v.Z)[-3:]
+    #for c_TEST in bottom_corners:
+        #e_TEST = c_TEST.extrude(100.0 * VECTOR_ONE_Z)
+        #o_TEST = doc.addObject("Part::Feature", f"{object_name}FaceTEST")
+        #o_TEST.Shape = e_TEST
+    corners = [
+        min_x_vertex,
+        bottom_corners[0],
+        bottom_corners[2],
+        ]
+    lower_support_face = make_face_from_corners(vertices_to_vectors(corners))
+    #lower_support_TEST = doc.addObject("Part::Feature", f"{object_name}TEST")
+    #lower_support_TEST.Shape = lower_support_face
+    normal = lower_support_face.normalAt(0, 0)
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    lower_support_shape_1 = lower_support_face.extrude(thickness/2.0 * normal)
+    lower_support_shape_2 = lower_support_face.extrude(thickness/2.0 * -normal)
+    # TODO: This fusion also retains the original edges...
+    lower_support_shape = lower_support_shape_1.fuse(lower_support_shape_2)
+    lower_support = doc.addObject("Part::Feature", f"{object_name}")
+    lower_support.Shape = lower_support_shape
+
+    prints(f"Success: created {object_name}.", 3)
+    return lower_support
+
+
+def create_upper_edge_thumb_plate_support(doc, config, top_plate, bottom_plate, object_name):
+    # The upper (bigger y) support will have an upper face that is
+    # parallel to be bottom face of the top thumb plate, so it will
+    # be at an angle compared to the lower edge support.
+
+    # First, find the vertex of the switch holes with maximum x
+    # and the one just before it; the support needs to be some
+    # distance away from it so it doesn't disturb the switch.
+    second_to_max_x_vertex = find_second_to_max_x_of_switches(config, top_plate)
+
+    (bottom_face, bottom_normal, bottom_tangent_1, bottom_tangent_2, longest_edge) \
+        = get_bottom_face_attributes(top_plate)
+
+
+    # Displace the (non-)starting point.
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    displacement = get_edge_buffer(config) + thickness
+    non_starting_point = second_to_max_x_vertex
+    # TODO: Any way to find out which way to point the tangents?
+    non_starting_point.Placement.Base = (non_starting_point.Placement.Base
+        + (displacement*(-bottom_tangent_1-bottom_tangent_2).normalize()))
+
+    # Find the lowest edge of the top thumb plate;
+    # the support will be perpendicular to it.
+    long = get_longer_than(config)
+    bottom_edge = find_min_z_edge_of_plate(long, top_plate)
+
+    # Get a vector that is parallel to the bottom face of the top
+    # thumb plate and tells the distance from the (non-)starting
+    # point to the bottom edge.
+    (top_face_vector, number) = geometry.findPerpendicular(
+        vertex_to_vector(second_to_max_x_vertex), [bottom_edge])
+    if top_face_vector.z < 0:
+        top_face_vector = -top_face_vector
+    #prints(f"TEST: top_face_vector: {format_vector(top_face_vector)}", 3)
+    # Make a copy to prevent top_face_vector from being altered.
+    top_face_direction = FreeCAD.Vector(top_face_vector)
+    top_face_direction.normalize()
+
+    # The edge from the (non-)starting point to the bottom edge
+    # contains one corner point of the support structure.
+    edge_to_bottom_edge = non_starting_point.extrude(-top_face_vector)
+    # Make the edge from the (non-)starting point up along the
+    # bottom face of the top thumb plate long enough so that the
+    # actual max z point can be found.
+    edge_to_top_edge = non_starting_point.extrude(longest_edge.Length * top_face_direction)
+    #edge_TEST = edge_to_bottom_edge.fuse(edge_to_top_edge)
+    #face_edge_TEST = doc.addObject("Part::Feature", f"{object_name}EdgeTEST")
+    #face_edge_TEST.Shape = edge_TEST
+
+    # edge_to_top_edge is too long; find the the intersection
+    # between it and the top thumb plate bottom face's edge.
+    max_z_vertex = get_max_z_vertex_for_upper_thumb_support(edge_to_top_edge, bottom_face, long)
+
+    (upper_support_face, normal) = make_upper_edge_thumb_plate_support_face(edge_to_bottom_edge, max_z_vertex)
+    #face_TEST = doc.addObject("Part::Feature", f"{object_name}FaceTEST")
+    #face_TEST.Shape = upper_support_face
+    extrude_vector = thickness * normal
+    upper_support = make_solid_from_face(doc, upper_support_face, extrude_vector, object_name)
+
+    prints(f"Success: created {object_name}.", 3)
+    return upper_support
+
+
+"""
+Finds the intersection point of edge_to_top_edge ("edge") and one edge
+of the bottom face of the top thumb plate ("face_edge"). Should also
+work for a more generalised case.
+There seems to be no simple way to get such a simple intersection,
+so the edges are made into lines (infinite in length?). Of course,
+then all "face_lines" intersect with the "line". Therefore, to find
+the real intersecting point, check if the intersection points have a
+vertex in common with or are "inside" both "edge" and "face_edge"
+because THAT can be done.
+"""
+def get_max_z_vertex_for_upper_thumb_support(edge, bottom_face, long):
+    max_z_vertex = None
+    line_to_top_edge = Part.Line(vertex_to_vector(edge.Vertexes[0]),
+        vertex_to_vector(edge.Vertexes[1]))
+    for face_edge in get_long_edges(bottom_face, long):
+        line = Part.Line(vertex_to_vector(face_edge.Vertexes[0]),
+            vertex_to_vector(face_edge.Vertexes[1]))
+        point_list = line.intersect(line_to_top_edge)
+        #prints(f"TEST: intersect point: {format_vertices(point_list)}", 3)
+        points = len(point_list)
+        if points > 1:
+            raise Exception(f"Error: initial intersect list has {points} points (should be one).")
+        elif points == 0:
+            # This shouldn't happen, but if it does, check the next one.
+            continue
+
+        point = point_list[0]
+
+        # isInside requires defining the tolerance and whether
+        # to count a point on a face as being "inside".
+        #is_in_top = edge.isInside(vertex_to_vector(point), 0.0001, True)
+        #is_in_face = face_edge.isInside(vertex_to_vector(point), 0.0001, True)
+
+        common_with_edge = edge.common(point)
+        common_with_face_edge = face_edge.common(point)
+        top_edge_commons = len(common_with_edge.Vertexes)
+        face_edge_commons = len(common_with_face_edge.Vertexes)
+        #prints(f"TEST: vertex of top: {format_vertices(common_with_edge.Vertexes)}", 4)
+        #prints(f"TEST: vertex of face: {format_vertices(common_with_face_edge.Vertexes)}", 4)
+        #prints(f"TEST: common_with_edge: {top_edge_commons}, is_in_top: is_in_top", 4)
+        #prints(f"TEST: common_with_face_edge: {face_edge_commons}, is_in_face: is_in_face", 4)
+
+        max_z_vertex = None
+        if (top_edge_commons > 0) and (face_edge_commons > 0):
+            max_z_vertex = common_with_edge.Vertexes[0]
+            if is_same_vector_vertex(max_z_vertex, common_with_face_edge.Vertexes[0]):
+                break
+
+    if max_z_vertex is None:
+        raise Exception("Error: couldn't find an intersection point between"
+            + " edge_to_top_edge and any edge of the bottom of the top thumb plate.")
+
+    return max_z_vertex
+
+
+def make_upper_edge_thumb_plate_support_face(edge_to_bottom_edge, max_z_vertex):
+    corner_1 = edge_to_bottom_edge.Vertexes[0]
+    if corner_1.Z > edge_to_bottom_edge.Vertexes[1].Z:
+        corner_1 = edge_to_bottom_edge.Vertexes[1]
+    corner_2 = max_z_vertex
+    corner_3 = Part.Vertex(corner_2.X, corner_2.Y, corner_1.Z)
+    corners = vertices_to_vectors([corner_1, corner_2, corner_3])
+    upper_support_face = make_face_from_corners(corners)
+
+    normal = upper_support_face.normalAt(0, 0)
+    if normal.x > 0:
+        normal = -normal
+
+    return (upper_support_face, normal)
+
+
+def trim_upper_support(doc, config, top_plate, upper_support, object_name):
+    top_plate_common_shape = upper_support.Shape.common(top_plate.Shape)
+    vertices = top_plate_common_shape.Vertexes
+    if len(vertices) > 0:
+        #top_plate_common_TEST = doc.addObject("Part::Feature", f"{object_name}CommonTEST")
+        #top_plate_common_TEST.Shape = top_plate_common_shape
+        #prints(f"TEST: common shape vertices: {format_vertices(vertices)}", 4)
+        bound_box = top_plate_common_shape.BoundBox
+        # The trimming shape needs to be made a little larger.
+        less = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+        more = 2.0 * less
+        x_len = bound_box.XLength + more
+        y_len = bound_box.YLength + more
+        z_len = bound_box.ZLength + more
+        trim_shape = Part.makeBox(x_len, y_len, z_len)
+        trim_shape.Placement.Base = FreeCAD.Vector(bound_box.XMin - less, bound_box.YMin - less, bound_box.ZMin)
+        #trim_TEST = doc.addObject("Part::Feature", f"{object_name}TrimTEST")
+        #trim_TEST.Shape = trim_shape
+        upper_support.Shape = upper_support.Shape.cut(trim_shape)
+        prints(f"Trimmed {object_name}.", 4)
+    return upper_support
 
 
 #----------------------------------------------------------------------x---------------------------
