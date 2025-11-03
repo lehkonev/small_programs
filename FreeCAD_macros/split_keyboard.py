@@ -46,7 +46,7 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 8
+START_AT_STEP = 7
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
@@ -1632,7 +1632,7 @@ def create_top_plate_supports(doc, config, bottom_left_wall, object_name):
 def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate, top_plate, object_name):
     prints("Creating top thumb plate supports...", 2)
     lower_support = create_lower_edge_thumb_plate_support(doc, config, top_thumb_plate,
-        bottom_thumb_plate, f"{object_name}Lower")
+        f"{object_name}Lower")
     upper_support = create_upper_edge_thumb_plate_support(doc, config, top_thumb_plate,
         bottom_thumb_plate, f"{object_name}Upper")
 
@@ -1648,20 +1648,17 @@ def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate
     return (lower_support, upper_support)
 
 
-def create_lower_edge_thumb_plate_support(doc, config, top_plate, bottom_plate, object_name):
+def create_lower_edge_thumb_plate_support(doc, config, top_plate, object_name):
     # The lower (smaller y) support will be under the shorter, more
     # vertical edge of the bottom of the top thumb plate.
     min_x_vertex = sorted(top_plate.Shape.Vertexes, key=lambda v: v.X)[0]
-    bottom_y_mins = sorted(bottom_plate.Shape.Vertexes, key=lambda v: v.Y)[:6]
-    bottom_corners = sorted(bottom_y_mins, key=lambda v: v.Z)[-3:]
-    #for c_TEST in bottom_corners:
-        #e_TEST = c_TEST.extrude(100.0 * VECTOR_ONE_Z)
-        #o_TEST = doc.addObject("Part::Feature", f"{object_name}FaceTEST")
-        #o_TEST.Shape = e_TEST
+    min_z_vertices = sorted(top_plate.Shape.Vertexes, key=lambda v: v.Z)[:2]
+    min_y_vertex = sorted(min_z_vertices, key=lambda v: v.Y)[0]
+    z_vertex = Part.Vertex(min_x_vertex.X, min_x_vertex.Y, min_y_vertex.Z)
     corners = [
         min_x_vertex,
-        bottom_corners[0],
-        bottom_corners[2],
+        min_y_vertex,
+        z_vertex,
         ]
     lower_support_face = make_face_from_corners(vertices_to_vectors(corners))
     #lower_support_TEST = doc.addObject("Part::Feature", f"{object_name}TEST")
