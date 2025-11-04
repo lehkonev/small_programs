@@ -46,7 +46,7 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 7
+START_AT_STEP = 8
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
@@ -1645,6 +1645,8 @@ def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate
     upper_support = trim_upper_support(doc, config, top_plate, upper_support,
         f"{object_name}Upper")
 
+    (lower_stopper, upper_stopper) = create_thumb_plate_stoppers(doc, config, top_thumb_plate, bottom_thumb_plate, upper_support, f"{object_name}Stopper")
+
     return (lower_support, upper_support)
 
 
@@ -1833,6 +1835,162 @@ def trim_upper_support(doc, config, top_plate, upper_support, object_name):
         upper_support.Shape = upper_support.Shape.cut(trim_shape)
         prints(f"Trimmed {object_name}.", 4)
     return upper_support
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that create support structures (thumb plate stoppers).
+
+
+def create_thumb_plate_stoppers(doc, config, top_plate, bottom_plate, upper_support, object_name):
+    prints("Creating thumb plate stoppers...", 2)
+    extend_bottom_thumb_plate_for_stoppers(doc, config, bottom_plate)
+    # Trim off the high end of the upper support triangle to create
+    # the stopper and make an extension to support the top thumb plate.
+    stopper_shape = create_stopper_shape(doc, config, upper_support)
+    stopper_TEST = doc.addObject("Part::Feature", f"{object_name}TEST")
+    stopper_TEST.Shape = stopper_shape
+    # TODO:
+    #create_and_move_stoppers(doc, stopper_shape)
+
+    return (None, None)
+    #return (lower_stopper, upper_stopper)
+
+
+def extend_bottom_thumb_plate_for_stoppers(doc, config, bottom_plate):
+    (min_x, min_y, min_z, max_x, max_y, max_z) \
+        = get_mins_maxes_from_vertices(bottom_plate.Shape.Vertexes)
+
+    extend_face = None
+    normal = None
+    for face in bottom_plate.Shape.Faces:
+        found_max_x = False
+        found_min_y = False
+        for vertex in face.Vertexes:
+            if isclose(vertex.X, max_x):
+                found_max_x = True
+            elif isclose(vertex.Y, min_y):
+                found_min_y = True
+
+        if found_max_x and found_min_y:
+            extend_face = face
+            normal = face.normalAt(0, 0)
+            if normal.x < 0:
+                normal = -normal
+            break
+
+    if extend_face is None:
+        raise Exception("Error: couldn't find the extend face on the bottom thumb plate.")
+
+    extrude_vector = float(config.get("Keyboard", "THUMB_PLATE_EXTEND_MM")) * normal
+    #name_TEST = f"{bottom_plate.Name}Extension"
+    #thumb_plate_extension_TEST = make_solid_from_face(doc, extend_face, extrude_vector, name_TEST)
+    extend_shape = extend_face.extrude(extrude_vector)
+    bottom_plate.Shape = bottom_plate.Shape.fuse(extend_shape)
+
+    prints(f"Success: extended {bottom_plate.Name}.", 3)
+
+
+def create_stopper_shape(doc, config, upper_support):
+    (base_shape, direction) = create_base_stopper_shape(doc, config, upper_support)
+    other_half_shape = create_stopper_half(doc, config, base_shape, direction)
+    stopper_shape = base_shape.fuse(other_half_shape)
+
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    bottom_shapes = []
+    # Since the fusing seems to preserve the originals as subshapes,
+    # there are two bottoms, so both need to be extruded.
+    for face in stopper_shape.Faces:
+        normal = face.normalAt(0, 0)
+        if isclose(normal.x, 0.0) and isclose(normal.y, 0.0):
+            if normal.z > 0:
+                normal = -normal
+            bottom_shapes.append(face.extrude(thickness * normal))
+
+    for shape in bottom_shapes:
+        stopper_shape = stopper_shape.fuse(shape)
+
+    return stopper_shape
+
+
+def create_base_stopper_shape(doc, config, upper_support):
+    # Get the trimming direction from the face of the vertical side.
+    normal = None
+    trim_face = None
+    for face in upper_support.Shape.Faces:
+        normal = face.normalAt(0, 0)
+        if isclose(normal.z, 0.0):
+            trim_face = face
+            if normal.x > 0:
+                normal = -normal
+            break
+
+    if normal is None:
+        raise Exception("Error: couldn't find the right normal of the upper support structure.")
+
+    min_x_vertices = sorted(upper_support.Shape.Vertexes, key=lambda v: v.X)[0:1]
+    end_point = sorted(min_x_vertices, key=lambda v: v.Z)[0]
+    non_starting_point = sorted(upper_support.Shape.Vertexes, key=lambda v: v.Y)[0]
+    stopper_length = float(config.get("Keyboard", "THUMB_PLATE_STOPPER_LENGTH_MM"))
+    starting_vector = vertex_to_vector(non_starting_point) + stopper_length*normal
+    trim_vector = starting_vector - vertex_to_vector(end_point)
+    trim_shape = trim_face.extrude(trim_vector)
+    #trim_TEST = doc.addObject("Part::Feature", "TrimTEST")
+    #trim_TEST.Shape = trim_shape
+
+    stopper_shape = upper_support.Shape.copy()
+    stopper_shape = stopper_shape.cut(trim_shape)
+    #trimmed_stopper_TEST = doc.addObject("Part::Feature", "TrimmedStopperTEST")
+    #trimmed_stopper_TEST.Shape = stopper_shape
+
+    direction = FreeCAD.Vector(trim_vector)
+    direction.normalize()
+    return (stopper_shape, direction)
+
+
+def create_stopper_half(doc, config, base_shape, direction):
+    other_shape = base_shape.copy()
+    short_edges = sorted(other_shape.Edges, key=lambda e: e.Length)[:3]
+    rotation_edge = None
+    for edge in short_edges:
+        for vertex in edge.Vertexes:
+            if isclose(vertex.Y, other_shape.BoundBox.YMin):
+                rotation_edge = edge
+                break
+
+    base_point = vertex_to_vector(rotation_edge.Vertexes[0])
+    other_shape.rotate(base_point, rotation_edge.tangentAt(0), -90.0)
+    other_shape.rotate(other_shape.BoundBox.Center, VECTOR_ONE_Z, 180.0)
+    other_shape.rotate(other_shape.BoundBox.Center, direction, 180.0)
+    other_shape = trim_other_stopper_shape(doc, config, other_shape, base_shape)
+    stopper_TEST = doc.addObject("Part::Feature", "TrimmedStopperShapeTEST")
+    stopper_TEST.Shape = other_shape
+
+    return other_shape
+
+
+def trim_other_stopper_shape(doc, config, other_shape, base_shape):
+    # The trim direction is the angled side of the base stopper shape.
+    normal = None
+    trim_face = None
+    max_length = None
+    for face in base_shape.Faces:
+        normal = face.normalAt(0, 0)
+        if (not isclose(normal.x, 0.0)) and (not isclose(normal.y, 0.0)) and (not isclose(normal.z, 0.0)):
+            trim_face = face
+            max_length = sorted(face.Edges, key=lambda e: e.Length, reverse=True)[0].Length
+            if normal.z < 0:
+                normal = -normal
+            break
+
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    trim_face = trim_face.copy()
+    trim_face.Placement.Base = trim_face.Placement.Base + thickness*normal
+    enough = max_length * thickness
+    trim_face_expanded = expand_face(trim_face, enough)
+    trim_shape = trim_face_expanded.extrude(enough * normal)
+    other_shape = other_shape.cut(trim_shape)
+
+    return other_shape
 
 
 #----------------------------------------------------------------------x---------------------------
