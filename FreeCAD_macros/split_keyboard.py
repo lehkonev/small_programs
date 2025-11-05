@@ -16,6 +16,7 @@ import os.path
 SCRIPT_FILE = __file__
 CONFIG_FILE_NAME = "split_keyboard.ini"
 FREECAD_EXT = ".FCStd" # Expected name format: "SplitKeyboard001.FCStd".
+PRECISION = 1e-8
 
 # Visual and positional layout of the left side of the split keyboard.
 # Each coordinate denotes one switch's place (in unit lengths, not in
@@ -136,11 +137,17 @@ def main():
                     objects["BottomLeftSideWall"], "TopPlateSupport")
                 objects["TopPlateSupportLower"] = lower
                 objects["TopPlateSupportUpper"] = upper
-                (lower_support, upper_support) = create_thumb_plate_supports(doc, config,
-                    objects["TopThumbPlate"], objects["BottomThumbPlate"], objects["TopPlate"],
-                    "ThumbPlateSupport")
+
+                (lower_support, upper_support, lower_stopper, upper_stopper) \
+                    = create_thumb_plate_supports(doc, config, objects["TopThumbPlate"],
+                    objects["BottomThumbPlate"], objects["TopPlate"], "ThumbPlateSupport")
                 objects["ThumbPlateSupportLower"] = lower_support
                 objects["ThumbPlateSupportUpper"] = upper_support
+                objects["ThumbPlateSupportStopperLower"] = lower_stopper
+                objects["ThumbPlateSupportStopperUpper"] = upper_stopper
+                # NOTE: BottomThumbPlate still needs holes for the
+                # stoppers at this point. But make the full bottom
+                # shape first.
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -279,6 +286,13 @@ def account_for_kerf(number, kerf, hole=False):
     return kerfed
 
 
+"""
+Default isclose is too precise, so this is a wrap.
+"""
+def is_close(number_1, number_2):
+    return isclose(number_1, number_2, abs_tol=PRECISION)
+
+
 def is_same_vector_vertex(v_1, v_2):
     if (v_1 is None) and (v_2 is None):
         return True
@@ -314,7 +328,7 @@ def is_same_vector_vertex(v_1, v_2):
             or (v_2_y is None) or (v_1_z is None) or (v_2_z is None)):
         raise Exception("Error: Could not compare vectors/vertices.")
 
-    return isclose(v_1_x, v_2_x) and isclose(v_1_y, v_2_y) and isclose(v_1_z, v_2_z)
+    return is_close(v_1_x, v_2_x) and is_close(v_1_y, v_2_y) and is_close(v_1_z, v_2_z)
 
 
 def vector_to_vertex(vector):
@@ -369,7 +383,7 @@ def get_long_edge_vertices(config, object):
 
 
 def get_long_edges(object, longer_than):
-    if (longer_than < 0) or isclose(longer_than, 0.0):
+    if (longer_than < 0) or is_close(longer_than, 0.0):
         raise Exception("Error: edge length comparison value has to be greater than 0.")
 
     edges = []
@@ -380,10 +394,10 @@ def get_long_edges(object, longer_than):
     long_edges = []
     i = 1
     for edge in edges:
-        if (edge.Length < 0) or isclose(edge.Length, 0.0):
+        if (edge.Length < 0) or is_close(edge.Length, 0.0):
             raise Exception("Error: invalid edge length: {edge.Length}.")
 
-        if (edge.Length > longer_than) and (not isclose(edge.Length, longer_than)):
+        if (edge.Length > longer_than) and (not is_close(edge.Length, longer_than)):
             #prints(f"TEST: edge {i} p0: {format_vertex(edge.Vertexes[0])}", 4)
             #prints(f"TEST: edge {i} p1: {format_vertex(edge.Vertexes[1])}", 4)
             i = i + 1
@@ -426,7 +440,7 @@ def get_rim_vertices(rim_edges):
             # Find unique vertices of the rim of object.
             found_same = False
             for v in rim_vertices:
-                if isclose(vertex.X, v.X) and isclose(vertex.Y, v.Y) and isclose(vertex.Z, v.Z):
+                if is_close(vertex.X, v.X) and is_close(vertex.Y, v.Y) and is_close(vertex.Z, v.Z):
                     found_same = True
                     break
             if not found_same:
@@ -602,7 +616,7 @@ def find_min_z_edge_of_plate(long, plate):
         else:
             min_z = min(min_z, edge_z)
 
-        if isclose(edge.Vertexes[0].Z, min_z) and isclose(edge.Vertexes[1].Z, min_z):
+        if is_close(edge.Vertexes[0].Z, min_z) and is_close(edge.Vertexes[1].Z, min_z):
             bottom_edge = edge
 
     if bottom_edge is None:
@@ -617,7 +631,7 @@ def find_second_to_max_x_of_switches(config, switch_plate):
     longer_edges = get_long_edges(switch_plate, thickness)
     not_longer = get_longer_than(config)
     edges = list(filter(
-        lambda e: isclose(e.Length, not_longer) or (e.Length < not_longer),
+        lambda e: is_close(e.Length, not_longer) or (e.Length < not_longer),
         longer_edges))
     max_x_vertex = Part.Vertex(0.0, 0.0, 0.0)
     second_to_max_x_vertex = None
@@ -853,7 +867,7 @@ def get_vertices_of_rectangular_extension(top_plate_object, config):
     # Half of the edges are from the bottom of the top plate and half
     # from the top (z coordinate is 0.0 or 3.0 and otherwise they're
     # the same). Filter out the ones with larger z.
-    long_edges = list(filter(lambda e: isclose(e.Vertexes[0].Z, 0.0), long_edges))
+    long_edges = list(filter(lambda e: is_close(e.Vertexes[0].Z, 0.0), long_edges))
     #prints(f"TEST: long edge zs: {[float('%.02f' % e.Vertexes[0].Z) for e in long_edges]}", 3)
 
     rim_vertices = get_rim_vertices(long_edges)
@@ -865,7 +879,7 @@ def get_vertices_of_rectangular_extension(top_plate_object, config):
 
     # There are two vertices with max_y, and the one with the
     # smaller x is the rightmost vertex that is needed.
-    vertices_y_max = list(filter(lambda r: isclose(r.Y, max_y), rim_vertices))
+    vertices_y_max = list(filter(lambda r: is_close(r.Y, max_y), rim_vertices))
     #prints(f"TEST: vertices with y_max: {format_vertices(vertices_y_max)}", 3)
     if len(vertices_y_max) != 2:
         raise Exception(f"Error: found {len(vertices_y_max)} max y vertices (should be two).")
@@ -878,7 +892,7 @@ def get_vertices_of_rectangular_extension(top_plate_object, config):
     # The top right corner and all vertices to the left of it (so
     # with smaller x) are needed to remodel the top plate.
     corner_x = top_right_corner.X
-    vertices = list(filter(lambda v: (v.X < corner_x) or isclose(v.X, corner_x), rim_vertices))
+    vertices = list(filter(lambda v: (v.X < corner_x) or is_close(v.X, corner_x), rim_vertices))
     #prints(f"TEST: vertices: {format_vertices(vertices)}", 3)
     vertices.sort(key=lambda v: v.Y)
     #prints(f"TEST: vertices sorted: {format_vertices(vertices)}", 3)
@@ -1002,9 +1016,9 @@ def select_bottom_plate_vertices(rim_vertices, min_x):
     while i < len(rim_vertices):
         vertex_0 = rim_vertices[i]
         vertex_1 = rim_vertices[i + 1]
-        if isclose(vertex_0.X, min_x):
+        if is_close(vertex_0.X, min_x):
             vertices.append(vertex_0)
-        elif isclose(vertex_1.X, min_x):
+        elif is_close(vertex_1.X, min_x):
             vertices.append(vertex_1)
         elif vertex_0.X > vertex_1.X:
             vertices.append(vertex_0)
@@ -1030,7 +1044,7 @@ def select_bottom_plate_vertices(rim_vertices, min_x):
 
 def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
     bottom_plate_vertices = list(filter(
-        lambda v: not isclose(v.Z, 0.0), bottom_plate.Shape.Vertexes))
+        lambda v: not is_close(v.Z, 0.0), bottom_plate.Shape.Vertexes))
     (min_x, min_y, min_z, max_x, max_y, max_z) = get_mins_maxes_from_vertices(
         bottom_plate_vertices)
     #prints(f"TEST: min_x: {min_x:.2f}; min_y: {min_y:.2f}; min_z: {min_z:.2f}", 2)
@@ -1039,7 +1053,7 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
     # For creating the long side wall at min_x (left), just the two
     # min_x vertices are needed.
     left_wall_vertices = list(filter(
-        lambda v: isclose(v.X, min_x), bottom_plate_vertices))
+        lambda v: is_close(v.X, min_x), bottom_plate_vertices))
     no_of_vs = len(left_wall_vertices)
     if no_of_vs != 2:
         raise Exception(f"Error: found {no_of_vs} min x vertices (should be two).")
@@ -1103,7 +1117,7 @@ Needed:
 def create_side_wall(doc, config, bottom_plate_vertices, left_wall_vertices, top_plate,
         the_y, object_name):
     wall_vertices_1 = list(filter(
-        lambda v: isclose(v.Y, the_y), bottom_plate_vertices))
+        lambda v: is_close(v.Y, the_y), bottom_plate_vertices))
     no_of_vs = len(wall_vertices_1)
     if no_of_vs != 2:
         raise Exception(f"Error: found {no_of_vs} y vertices (should be two).")
@@ -1128,7 +1142,7 @@ def create_side_wall(doc, config, bottom_plate_vertices, left_wall_vertices, top
     top_plate_rim_vertices = get_long_edge_vertices(config, top_plate)
     #prints(f"TEST: top_plate_rim_vertices: {format_vertices(top_plate_rim_vertices)}", 3)
     wall_vertices_3 = list(filter(
-        lambda v: isclose(v.Y, the_y), top_plate_rim_vertices))
+        lambda v: is_close(v.Y, the_y), top_plate_rim_vertices))
     no_of_vs = len(wall_vertices_3)
     if no_of_vs != 4:
         raise Exception(f"Error: found {no_of_vs} max y vertices (should be four).")
@@ -1235,7 +1249,7 @@ def make_bottom_right_side_wall_cut_shape(doc, shape, thickness, object_name):
 
         # The larger z needs to be made a little larger (exact size
         # is not necessary).
-        if not isclose(vector.z, thickness):
+        if not is_close(vector.z, thickness):
             vector.z = vector.z + thickness
         vectors.append(vector)
     #prints(f"TEST: short edge vectors: {format_vectors(vectors)}", 3)
@@ -1372,9 +1386,9 @@ def find_thumb_edge(config, top_plate):
     thumb_edge = None
     for e in long_edges:
         # The edge is attached to maximum x.
-        if isclose(e.Vertexes[0].X, max_x) or isclose(e.Vertexes[1].X, max_x):
+        if is_close(e.Vertexes[0].X, max_x) or is_close(e.Vertexes[1].X, max_x):
             # The right one is not attached to maximum y.
-            if not (isclose(e.Vertexes[0].Y, max_y) or isclose(e.Vertexes[1].Y, max_y)):
+            if not (is_close(e.Vertexes[0].Y, max_y) or is_close(e.Vertexes[1].Y, max_y)):
                 thumb_edge = e
                 break
 
@@ -1629,7 +1643,8 @@ def create_top_plate_supports(doc, config, bottom_left_wall, object_name):
     return (support_lower_y, support_upper_y)
 
 
-def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate, top_plate, object_name):
+def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate, top_plate,
+        object_name):
     prints("Creating top thumb plate supports...", 2)
     lower_support = create_lower_edge_thumb_plate_support(doc, config, top_thumb_plate,
         f"{object_name}Lower")
@@ -1642,12 +1657,12 @@ def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate
     # trimmed, one vertex of the upper support touches the top plate
     # (but not in reality because the corner is so sharp that enough
     # of it will be lost due to kerf.)
-    upper_support = trim_upper_support(doc, config, top_plate, upper_support,
-        f"{object_name}Upper")
+    trim_upper_support(doc, config, top_plate, upper_support, f"{object_name}Upper")
 
-    (lower_stopper, upper_stopper) = create_thumb_plate_stoppers(doc, config, top_thumb_plate, bottom_thumb_plate, upper_support, f"{object_name}Stopper")
+    (lower_stopper, upper_stopper) = create_thumb_plate_stoppers(doc, config, top_thumb_plate,
+        bottom_thumb_plate, lower_support, upper_support, f"{object_name}Stopper")
 
-    return (lower_support, upper_support)
+    return (lower_support, upper_support, lower_stopper, upper_stopper)
 
 
 def create_lower_edge_thumb_plate_support(doc, config, top_plate, object_name):
@@ -1732,7 +1747,8 @@ def create_upper_edge_thumb_plate_support(doc, config, top_plate, bottom_plate, 
     # between it and the top thumb plate bottom face's edge.
     max_z_vertex = get_max_z_vertex_for_upper_thumb_support(edge_to_top_edge, bottom_face, long)
 
-    (upper_support_face, normal) = make_upper_edge_thumb_plate_support_face(edge_to_bottom_edge, max_z_vertex)
+    (upper_support_face, normal) = make_upper_edge_thumb_plate_support_face(
+        edge_to_bottom_edge, max_z_vertex)
     #face_TEST = doc.addObject("Part::Feature", f"{object_name}FaceTEST")
     #face_TEST.Shape = upper_support_face
     extrude_vector = thickness * normal
@@ -1829,31 +1845,32 @@ def trim_upper_support(doc, config, top_plate, upper_support, object_name):
         y_len = bound_box.YLength + more
         z_len = bound_box.ZLength + more
         trim_shape = Part.makeBox(x_len, y_len, z_len)
-        trim_shape.Placement.Base = FreeCAD.Vector(bound_box.XMin - less, bound_box.YMin - less, bound_box.ZMin)
+        trim_shape.Placement.Base = FreeCAD.Vector(bound_box.XMin - less,
+            bound_box.YMin - less, bound_box.ZMin)
         #trim_TEST = doc.addObject("Part::Feature", f"{object_name}TrimTEST")
         #trim_TEST.Shape = trim_shape
         upper_support.Shape = upper_support.Shape.cut(trim_shape)
         prints(f"Trimmed {object_name}.", 4)
-    return upper_support
 
 
 #----------------------------------------------------------------------x---------------------------
 # The functions that create support structures (thumb plate stoppers).
 
 
-def create_thumb_plate_stoppers(doc, config, top_plate, bottom_plate, upper_support, object_name):
+def create_thumb_plate_stoppers(doc, config, top_plate, bottom_plate, lower, upper, object_name):
     prints("Creating thumb plate stoppers...", 2)
     extend_bottom_thumb_plate_for_stoppers(doc, config, bottom_plate)
     # Trim off the high end of the upper support triangle to create
     # the stopper and make an extension to support the top thumb plate.
-    stopper_shape = create_stopper_shape(doc, config, upper_support)
-    stopper_TEST = doc.addObject("Part::Feature", f"{object_name}TEST")
-    stopper_TEST.Shape = stopper_shape
-    # TODO:
-    #create_and_move_stoppers(doc, stopper_shape)
-
-    return (None, None)
-    #return (lower_stopper, upper_stopper)
+    stopper_shape = create_stopper_shape(doc, config, upper)
+    #stopper_TEST = doc.addObject("Part::Feature", f"{object_name}TEST")
+    #stopper_TEST.Shape = stopper_shape
+    (lower_stopper, upper_stopper) = create_and_move_stoppers(doc, config, stopper_shape,
+        top_plate, object_name)
+    # The lower thumb plate support cuts into the lower stopper,
+    # so it needs to be trimmed.
+    trim_lower_thumb_plate_support(doc, config, lower, lower_stopper)
+    return (lower_stopper, upper_stopper)
 
 
 def extend_bottom_thumb_plate_for_stoppers(doc, config, bottom_plate):
@@ -1866,9 +1883,9 @@ def extend_bottom_thumb_plate_for_stoppers(doc, config, bottom_plate):
         found_max_x = False
         found_min_y = False
         for vertex in face.Vertexes:
-            if isclose(vertex.X, max_x):
+            if is_close(vertex.X, max_x):
                 found_max_x = True
-            elif isclose(vertex.Y, min_y):
+            elif is_close(vertex.Y, min_y):
                 found_min_y = True
 
         if found_max_x and found_min_y:
@@ -1883,7 +1900,7 @@ def extend_bottom_thumb_plate_for_stoppers(doc, config, bottom_plate):
 
     extrude_vector = float(config.get("Keyboard", "THUMB_PLATE_EXTEND_MM")) * normal
     #name_TEST = f"{bottom_plate.Name}Extension"
-    #thumb_plate_extension_TEST = make_solid_from_face(doc, extend_face, extrude_vector, name_TEST)
+    #thumb_plate_ext_TEST = make_solid_from_face(doc, extend_face, extrude_vector, name_TEST)
     extend_shape = extend_face.extrude(extrude_vector)
     bottom_plate.Shape = bottom_plate.Shape.fuse(extend_shape)
 
@@ -1899,9 +1916,14 @@ def create_stopper_shape(doc, config, upper_support):
     bottom_shapes = []
     # Since the fusing seems to preserve the originals as subshapes,
     # there are two bottoms, so both need to be extruded.
-    for face in stopper_shape.Faces:
+    faces = []
+    for sub in stopper_shape.SubShapes:
+        faces = faces + sub.Faces
+    for face in faces:
         normal = face.normalAt(0, 0)
-        if isclose(normal.x, 0.0) and isclose(normal.y, 0.0):
+        #prec = 8
+        #prints(f"TEST: {normal.x:.{prec}f}, {normal.y:.{prec}f}, {normal.z:.{prec}f}", 4)
+        if is_close(normal.x, 0.0) and is_close(normal.y, 0.0):
             if normal.z > 0:
                 normal = -normal
             bottom_shapes.append(face.extrude(thickness * normal))
@@ -1918,7 +1940,7 @@ def create_base_stopper_shape(doc, config, upper_support):
     trim_face = None
     for face in upper_support.Shape.Faces:
         normal = face.normalAt(0, 0)
-        if isclose(normal.z, 0.0):
+        if is_close(normal.z, 0.0):
             trim_face = face
             if normal.x > 0:
                 normal = -normal
@@ -1953,7 +1975,7 @@ def create_stopper_half(doc, config, base_shape, direction):
     rotation_edge = None
     for edge in short_edges:
         for vertex in edge.Vertexes:
-            if isclose(vertex.Y, other_shape.BoundBox.YMin):
+            if is_close(vertex.Y, other_shape.BoundBox.YMin):
                 rotation_edge = edge
                 break
 
@@ -1962,8 +1984,8 @@ def create_stopper_half(doc, config, base_shape, direction):
     other_shape.rotate(other_shape.BoundBox.Center, VECTOR_ONE_Z, 180.0)
     other_shape.rotate(other_shape.BoundBox.Center, direction, 180.0)
     other_shape = trim_other_stopper_shape(doc, config, other_shape, base_shape)
-    stopper_TEST = doc.addObject("Part::Feature", "TrimmedStopperShapeTEST")
-    stopper_TEST.Shape = other_shape
+    #stopper_TEST = doc.addObject("Part::Feature", "TrimmedStopperShapeTEST")
+    #stopper_TEST.Shape = other_shape
 
     return other_shape
 
@@ -1975,7 +1997,8 @@ def trim_other_stopper_shape(doc, config, other_shape, base_shape):
     max_length = None
     for face in base_shape.Faces:
         normal = face.normalAt(0, 0)
-        if (not isclose(normal.x, 0.0)) and (not isclose(normal.y, 0.0)) and (not isclose(normal.z, 0.0)):
+        if ((not is_close(normal.x, 0.0)) and (not is_close(normal.y, 0.0))
+                and (not is_close(normal.z, 0.0))):
             trim_face = face
             max_length = sorted(face.Edges, key=lambda e: e.Length, reverse=True)[0].Length
             if normal.z < 0:
@@ -1991,6 +2014,115 @@ def trim_other_stopper_shape(doc, config, other_shape, base_shape):
     other_shape = other_shape.cut(trim_shape)
 
     return other_shape
+
+
+def create_and_move_stoppers(doc, config, stopper_shape, top_plate, object_name):
+    long = get_longer_than(config)
+    bottom_edge = find_min_z_edge_of_plate(long, top_plate)
+    direction = bottom_edge.tangentAt(0)
+    if direction.y < 0:
+        direction = -direction
+
+    # Find an edge of the stopper shape that lies on bottom_edge;
+    # that can be used to calculate the moving distance.
+    shape_vertex = None
+    for edge in stopper_shape.Edges:
+        common_count = 0
+        for vertex in edge.Vertexes:
+            common_with_edge = bottom_edge.common(vertex)
+            common_count = common_count + len(common_with_edge.Vertexes)
+        # If both vertices are on the edge, take
+        # one vertex for calculating the distance.
+        if common_count == 2:
+            shape_vector = vertex_to_vector(edge.Vertexes[1])
+            break
+
+    if shape_vector is None:
+        raise Exception("Error: couldn't find any edge of the stopper"
+            + " shape in common with top thumb plate's bottom edge.")
+
+    bottom_vectors = vertices_to_vectors(bottom_edge.Vertexes)
+    distance_lower = shape_vector.distanceToPoint(bottom_vectors[0])
+    distance_upper = shape_vector.distanceToPoint(bottom_vectors[1])
+
+    other_shape = stopper_shape.copy()
+    stopper_shape.Placement.Base = stopper_shape.Placement.Base - distance_lower*direction
+    # The distance of the upper stopper needs to be adjusted because
+    # otherwise it will peek out from under the top thumb plate.
+    other_shape.Placement.Base = get_adjusted_distance_for_upper_stopper(doc, config,
+        top_plate, other_shape, distance_upper, direction)
+    lower_stopper = doc.addObject("Part::Feature", f"{object_name}Lower")
+    upper_stopper = doc.addObject("Part::Feature", f"{object_name}Upper")
+    lower_stopper.Shape = stopper_shape
+    upper_stopper.Shape = other_shape
+
+    prints(f"Success: created {object_name}s.", 3)
+    return (lower_stopper, upper_stopper)
+
+
+def get_adjusted_distance_for_upper_stopper(doc, config, top_plate, shape, distance, direction):
+    # Find the highest edge, since the higher part peeks out more.
+    max_z = 0.0
+    max_vertex = None
+    for edge in shape.Edges:
+        for vertex in edge.Vertexes:
+            if vertex.Z > max_z:
+                max_z = vertex.Z
+                max_vertex = vertex
+    starting_point = vertex_to_vector(max_vertex)
+
+    base_placement = shape.Placement.Base
+    overshooting_distance = starting_point + base_placement + distance*direction
+    overshooting_line = Part.LineSegment(starting_point, overshooting_distance)
+    #overshooting_edge_shape_TEST = Part.Edge(overshooting_line)
+    #overshooting_edge_TEST = doc.addObject("Part::Feature", "OvershootingEdgeTEST")
+    #overshooting_edge_TEST.Shape = overshooting_edge_shape_TEST
+
+    longer_than = get_longer_than(config)
+    correct_distance = None
+    for edge in get_long_edges(top_plate, longer_than):
+        line = Part.Line(vertex_to_vector(edge.Vertexes[0]), vertex_to_vector(edge.Vertexes[1]))
+        point_list = line.intersect(overshooting_line)
+        #prints(f"TEST: intersect point: {format_vertices(point_list)}", 3)
+        if len(point_list) == 1:
+            point = point_list[0]
+            difference = starting_point - vertex_to_vector(point)
+            correct_distance = difference.Length
+            break
+
+    return base_placement + correct_distance*direction
+
+
+def trim_lower_thumb_plate_support(doc, config, lower_support, lower_stopper):
+    common = lower_stopper.Shape.common(lower_support.Shape)
+    #common_TEST = doc.addObject("Part::Feature", f"CommonTEST")
+    #common_TEST.Shape = common
+    min_x_vertex = sorted(common.Vertexes, key=lambda v: v.X)[0]
+    # The cutting face is in the same direction as the vertical face of the support.
+    direction = None
+    tangents = None
+    for face in sorted(lower_support.Shape.Faces, key=lambda f: f.Area, reverse=True)[2:]:
+        normal = face.normalAt(0, 0)
+        if is_close(normal.z, 0):
+            direction = normal
+            tangents = face.tangentAt(0, 0)
+            if normal.x < 0:
+                direction = -normal
+                break
+
+    # Make a small face and then expand and extrude it to create a trimming shape.
+    enough = lower_stopper.Shape.BoundBox.DiagonalLength
+    (tangent_1, tangent_2) = tangents
+    edge = min_x_vertex.extrude(tangent_1)
+    small_face = edge.extrude(tangent_2)
+    face = expand_face(small_face, enough)
+    #trim_face_TEST = doc.addObject("Part::Feature", f"TrimFaceTEST")
+    #trim_face_TEST.Shape = face
+    shape = face.extrude(enough * direction)
+    new_shape = lower_support.Shape.cut(shape)
+    lower_support.Shape = new_shape
+
+    prints(f"Success: trimmed {lower_support.Name}.", 3)
 
 
 #----------------------------------------------------------------------x---------------------------
