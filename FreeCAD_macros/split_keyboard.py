@@ -38,6 +38,12 @@ LAYOUT_LEFT_THUMB = [
     (0, 1),  (1, 1),  (2, 1),
     (0, 0),  (1, 0),  (2, 0),
 ]
+LAYOUT_MIDDLE= [
+    (0, 3.3),  (1, 3.3),  (2, 3.3), (3, 3.3),   (4.5, 3),           (6.5, 3),
+    (0, 2),    (1, 2),    (2, 2),   (3, 2),     (4.5, 2),           (6.5, 2),
+    (0, 1),    (1, 1),    (2, 1),   (3, 1),               (5.5, 1),
+    (0, 0),    (1, 0),    (2, 0),   (3, 0),     (4.5, 0), (5.5, 0), (6.5, 0),
+]
 
 VECTOR_ZERO = FreeCAD.Vector(0.0, 0.0, 0.0)
 VECTOR_ONE_X = FreeCAD.Vector(1.0, 0.0, 0.0)
@@ -47,11 +53,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 8
+START_AT_STEP = 9
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 8
+STOP_AT_STEP = 9
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -62,8 +68,13 @@ STEPS = {
     6: "Creating bottom thumb plate...",
     7: "Creating wrist support...",
     8: "Creating support structures...",
-    9: "Creating enclosure that connects the halves...",
-    10: "Creating and connecting right side...",
+    9: "Rotating everything for creating the middle...",
+    10: "Creating middle switch holes...",
+    11: "Creating middle top plate...",
+    12: "Creating middle bottom plate...",
+    13: "Creating middle side walls...",
+    14: "Combining and tweaking bottom plates...",
+    15: "Creating and connecting right side...",
 }
 
 def main():
@@ -148,6 +159,8 @@ def main():
                 # NOTE: BottomThumbPlate still needs holes for the
                 # stoppers at this point. But make the full bottom
                 # shape first.
+            case 9:
+                rotate_everything(config, objects, "LeftSideWall")
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2123,6 +2136,37 @@ def trim_lower_thumb_plate_support(doc, config, lower_support, lower_stopper):
     lower_support.Shape = new_shape
 
     prints(f"Success: trimmed {lower_support.Name}.", 3)
+
+
+#----------------------------------------------------------------------x---------------------------
+# Rotate everything.
+
+def rotate_everything(config, objects, rotate_edge_object_name):
+    # Find the vertex around which to rotate everything.
+    rotate_object = objects[rotate_edge_object_name]
+    # The vertex is the top left one.
+    rotate_vertex = None
+    for vertex in rotate_object.Shape.Vertexes:
+        if ((rotate_vertex is None)
+                or (rotate_vertex.X > vertex.X)
+                or (rotate_vertex.Y < vertex.Y)):
+            rotate_vertex = vertex
+
+    if rotate_vertex is None:
+        raise Exception("Error: couldn't find an edge to rotate the objects about.")
+
+    # The original rotation of the top plate was 26.57 degrees. This
+    # new rotation is more than that and in the other direction.
+    degrees = float(config.get("Keyboard", "LEFT_SIDE_ROTATE_DEGREES"))
+    rotation = FreeCAD.Rotation(degrees, 0.0, 0.0) # Yaw, pitch, roll.
+    centre = vertex_to_vector(rotate_vertex)
+    for object_name in objects:
+        object = objects[object_name]
+        shape = object.Shape.copy()
+        shape.rotate(centre, VECTOR_ONE_Z, degrees)
+        object.Shape = shape
+
+    prints(f"Success: rotated all objects.", 2)
 
 
 #----------------------------------------------------------------------x---------------------------
