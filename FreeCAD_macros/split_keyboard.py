@@ -39,10 +39,15 @@ LAYOUT_LEFT_THUMB = [
     (0, 0),  (1, 0),  (2, 0),
 ]
 LAYOUT_MIDDLE= [
-    (0, 3.3),  (1, 3.3),  (2, 3.3), (3, 3.3),   (4.5, 3),           (6.5, 3),
-    (0, 2),    (1, 2),    (2, 2),   (3, 2),     (4.5, 2),           (6.5, 2),
-    (0, 1),    (1, 1),    (2, 1),   (3, 1),               (5.5, 1),
-    (0, 0),    (1, 0),    (2, 0),   (3, 0),     (4.5, 0), (5.5, 0), (6.5, 0),
+    (-3.2, 8), (-2.2, 8), (-1.2, 8), (0, 8),    (1, 8), (2, 8),   (3, 8), (4.2, 8), (5.2, 8), (6.2, 8),
+          (-2.3, 7),                (0, 6.8), (1, 6.8), (2, 6.8), (3, 6.8),             (5.7, 7),
+                                    (0, 5.8), (1, 5.8), (2, 5.8), (3, 5.8),
+                                    (0, 4.8), (1, 4.8), (2, 4.8), (3, 4.8),
+                                    (0, 3.8), (1, 3.8), (2, 3.8), (3, 3.8),
+                                           (0.9, 2.6),   (2.1, 2.6),
+                                      (0.3, 1.6),              (2.7, 1.6),
+                                                   (1.5, 1),
+                                       (0.5, 0),   (1.5, 0),  (2.5, 0),
 ]
 
 VECTOR_ZERO = FreeCAD.Vector(0.0, 0.0, 0.0)
@@ -53,11 +58,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 9
+START_AT_STEP = 10
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 9
+STOP_AT_STEP = 10
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -69,12 +74,11 @@ STEPS = {
     7: "Creating wrist support...",
     8: "Creating support structures...",
     9: "Rotating everything for creating the middle...",
-    10: "Creating middle switch holes...",
-    11: "Creating middle top plate...",
-    12: "Creating middle bottom plate...",
-    13: "Creating middle side walls...",
-    14: "Combining and tweaking bottom plates...",
-    15: "Creating and connecting right side...",
+    10: "Creating middle top plate...",
+    11: "Creating middle bottom plate...",
+    12: "Creating middle side walls...",
+    13: "Combining and tweaking bottom plates...",
+    14: "Creating and connecting right side...",
 }
 
 def main():
@@ -161,6 +165,8 @@ def main():
                 # shape first.
             case 9:
                 rotate_everything(config, objects, "LeftSideWall")
+            case 10:
+                create_middle_top_plate(doc, config, objects["TopPlate"], objects["BottomThumbPlate"], "MiddleTopPlate")
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2167,6 +2173,47 @@ def rotate_everything(config, objects, rotate_edge_object_name):
         object.Shape = shape
 
     prints(f"Success: rotated all objects.", 2)
+
+
+#----------------------------------------------------------------------x---------------------------
+# Create the middle top plate.
+
+
+def create_middle_top_plate(doc, config, top, bottom_thumb, object_name):
+    # Find the strategic vertices.
+    (max_x_vertex, min_y_vertex, max_z_vertex) \
+        = find_key_vertices_for_middle_top_plate(top, bottom_thumb)
+
+    edge_corner = FreeCAD.Vector(max_x_vertex.X, min_y_vertex.Y, max_z_vertex.Z)
+    faces = create_middle_switch_holes(doc, config, LAYOUT_MIDDLE, edge_corner,
+        f"{object_name}SwitchHoles")
+
+
+def find_key_vertices_for_middle_top_plate(top, bottom_thumb):
+    max_z_vertex = sorted(top.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[0]
+    max_x_vertex = sorted(top.Shape.Vertexes, key=lambda v: v.X, reverse=True)[0]
+    min_y_vertex = max_x_vertex
+    for sub in bottom_thumb.Shape.SubShapes:
+        vertex = sorted(sub.Vertexes, key=lambda v: v.X, reverse=True)[0]
+        if max_x_vertex.X < vertex.X:
+            max_x_vertex = vertex
+        vertex = sorted(sub.Vertexes, key=lambda v: v.Y)[0]
+        if min_y_vertex.Y > vertex.Y:
+            min_y_vertex = vertex
+    #prints(f"TEST: max_x_vertex: {format_vertex(max_x_vertex)}", 2)
+    #prints(f"TEST: min_y_vertex: {format_vertex(min_y_vertex)}", 2)
+    #prints(f"TEST: max_z_vertex: {format_vertex(max_z_vertex)}", 2)
+    return (max_x_vertex, min_y_vertex, max_z_vertex)
+
+
+def create_middle_switch_holes(doc, config, layout, edge_corner, object_name):
+    lower = float(config.get("Keyboard", "LOWER_MIDDLE_MM"))
+    edge_corner.z = edge_corner.z + lower
+    faces = create_switch_hole_faces(config, layout, edge_corner, VECTOR_ONE_X, VECTOR_ONE_Y)
+    switch_faces_TEST = doc.addObject("Part::MultiFuse", f"{object_name}FaceTEST")
+    switch_faces_TEST.Shape = faces
+
+    return faces
 
 
 #----------------------------------------------------------------------x---------------------------
