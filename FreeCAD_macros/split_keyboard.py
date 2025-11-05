@@ -74,7 +74,7 @@ STEPS = {
     7: "Creating wrist support...",
     8: "Creating support structures...",
     9: "Rotating everything for creating the middle...",
-    10: "Creating middle top plate...",
+    10: "Creating top middle plate...",
     11: "Creating middle bottom plate...",
     12: "Creating middle side walls...",
     13: "Combining and tweaking bottom plates...",
@@ -166,7 +166,7 @@ def main():
             case 9:
                 rotate_everything(config, objects, "LeftSideWall")
             case 10:
-                create_middle_top_plate(doc, config, objects["TopPlate"], objects["BottomThumbPlate"], "MiddleTopPlate")
+                create_top_middle_plate(doc, config, objects["TopPlate"], objects["BottomThumbPlate"], "TopMiddlePlate")
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2176,45 +2176,107 @@ def rotate_everything(config, objects, rotate_edge_object_name):
 
 
 #----------------------------------------------------------------------x---------------------------
-# Create the middle top plate.
+# Create the top middle plate.
 
 
-def create_middle_top_plate(doc, config, top, bottom_thumb, object_name):
+def create_top_middle_plate(doc, config, top, bottom_thumb, object_name):
     # Find the strategic vertices.
-    (max_x_vertex, min_y_vertex, max_z_vertex) \
-        = find_key_vertices_for_middle_top_plate(top, bottom_thumb)
+    (left_edge_vertices, max_x_vertex, max_z_vertex) \
+        = find_key_vertices_for_top_middle_plate(top, bottom_thumb)
 
-    edge_corner = FreeCAD.Vector(max_x_vertex.X, min_y_vertex.Y, max_z_vertex.Z)
-    faces = create_middle_switch_holes(doc, config, LAYOUT_MIDDLE, edge_corner,
-        f"{object_name}SwitchHoles")
+    height = max_z_vertex.Z + float(config.get("Keyboard", "LOWER_MIDDLE_MM"))
+    edge_corner = FreeCAD.Vector(max_x_vertex.X, left_edge_vertices[0].Y, height)
+    switch_faces = create_switch_hole_faces(config, LAYOUT_MIDDLE, edge_corner,
+        VECTOR_ONE_X, VECTOR_ONE_Y)
+    switch_faces_TEST = doc.addObject("Part::MultiFuse", f"{object_name}SwitchHolesFaceTEST")
+    switch_faces_TEST.Shape = switch_faces
+
+    left_edge_vectors = vertices_to_vectors(left_edge_vertices)
+    corners = create_middle_plate_corners(left_edge_vectors, height,
+        switch_faces.CenterOfGravity.x)
+    plate_face = make_face_from_corners(corners)
+    prints(f"Success: created top middle plate face.", 2)
+    face_TEST = doc.addObject("Part::Feature", f"{object_name}PlateFaceTEST")
+    face_TEST.Shape = plate_face
+
+    max_y = switch_faces.BoundBox.YMax + get_edge_buffer(config)
+    # TODO: trim plate to max y.
 
 
-def find_key_vertices_for_middle_top_plate(top, bottom_thumb):
-    max_z_vertex = sorted(top.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[0]
-    max_x_vertex = sorted(top.Shape.Vertexes, key=lambda v: v.X, reverse=True)[0]
-    min_y_vertex = max_x_vertex
+def find_key_vertices_for_top_middle_plate(top, bottom_thumb):
+    # Max z vertex is needed for calculating the height at which
+    # the middle top plate rests.
+    top_vertices = sorted(top.Shape.Vertexes, key=lambda v: v.Z, reverse=True)
+    max_z_vertex = top_vertices[0]
+    # Top plate's max x vertex is one corner of the middle plate shape.
+    top_vertices.sort(key=lambda v: v.X, reverse=True)
+    top_max_x_vertex = top_vertices[0]
+    # Top plate's second to max x vertex can be used together with
+    # top max y vertex to calculate the min x / max y corner of the
+    # middle plate.
+    top_second_to_max_x_vertex = top_vertices[1]
+    top_vertices.sort(key=lambda v: v.Y, reverse=True)
+    top_max_y_vertex = top_vertices[0]
+
+    # Get all the vertices of the bottom thumb plate and its extension.
+    vertices = []
     for sub in bottom_thumb.Shape.SubShapes:
-        vertex = sorted(sub.Vertexes, key=lambda v: v.X, reverse=True)[0]
-        if max_x_vertex.X < vertex.X:
-            max_x_vertex = vertex
-        vertex = sorted(sub.Vertexes, key=lambda v: v.Y)[0]
-        if min_y_vertex.Y > vertex.Y:
-            min_y_vertex = vertex
-    #prints(f"TEST: max_x_vertex: {format_vertex(max_x_vertex)}", 2)
-    #prints(f"TEST: min_y_vertex: {format_vertex(min_y_vertex)}", 2)
-    #prints(f"TEST: max_z_vertex: {format_vertex(max_z_vertex)}", 2)
-    return (max_x_vertex, min_y_vertex, max_z_vertex)
+        vertices = vertices + sub.Vertexes
+
+    # Max y vertex of the bottom thumb plate is one corner of the
+    # middle plate.
+    vertices.sort(key=lambda v: v.Y, reverse=True)
+    bottom_max_y_vertex = vertices[0]
+    # Max x vertex of the bottom thumb plate is one corner of the
+    # middle plate.
+    vertices.sort(key=lambda v: v.X, reverse=True)
+    bottom_max_x_vertex = vertices[0]
+    # The next two smaller x vertices are also corners. (Technically
+    # just one because the second lies on the line between the max
+    # and the third.)
+    bottom_next_max_x_vertex = bottom_max_x_vertex
+    bottom_min_y_vertex = bottom_max_x_vertex
+    i = 0
+    for vertex in vertices:
+        #prints(f"TEST: bottom next max x vertex: {format_vertex(bottom_next_max_x_vertex)}", 2)
+        if ((vertex.X < bottom_next_max_x_vertex.X)
+                and (not is_close(vertex.X, bottom_next_max_x_vertex.X))):
+            bottom_next_max_x_vertex = vertex
+            # One of these is also the wanted min y vertex.
+            if vertex.Y < bottom_min_y_vertex.Y:
+                bottom_min_y_vertex = vertex
+            i = i + 1
+            if i == 2:
+                break
+
+    # General max x and min y vertices are the x and y coordinates
+    # of the origin corner for the switch holes.
+    max_x_vertex = top_max_x_vertex
+    if bottom_max_x_vertex.X > max_x_vertex.X:
+        max_x_vertex = bottom_max_x_vertex
+
+    # Returning a list with the order of rising y
+    # and then max x and max z.
+    return ([bottom_min_y_vertex, bottom_next_max_x_vertex, bottom_max_y_vertex,
+        top_max_x_vertex, top_max_y_vertex], max_x_vertex, max_z_vertex)
 
 
-def create_middle_switch_holes(doc, config, layout, edge_corner, object_name):
-    lower = float(config.get("Keyboard", "LOWER_MIDDLE_MM"))
-    edge_corner.z = edge_corner.z + lower
-    faces = create_switch_hole_faces(config, layout, edge_corner, VECTOR_ONE_X, VECTOR_ONE_Y)
-    switch_faces_TEST = doc.addObject("Part::MultiFuse", f"{object_name}FaceTEST")
-    switch_faces_TEST.Shape = faces
+def create_middle_plate_corners(left_edge_vectors, height, centre_x):
+    corners = []
+    count = -1
+    for corner in left_edge_vectors:
+        count = count + 1
+        corner.z = height
+        #prints(f"TEST: corner {count}: {format_vector(corner)}", 2)
+        corners.append(corner)
+    while count >= 0:
+        new_x = centre_x + (centre_x-corners[count].x)
+        new_corner = FreeCAD.Vector(new_x, corners[count].y, height)
+        #prints(f"TEST: new_corner {count}: {format_vector(new_corner)}", 2)
+        corners.append(new_corner)
+        count = count - 1
 
-    return faces
-
+    return corners
 
 #----------------------------------------------------------------------x---------------------------
 
