@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 11
+START_AT_STEP = 4
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 11
+STOP_AT_STEP = 10
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -123,10 +123,12 @@ def main():
                     "BottomPlate")
                 objects["BottomPlate"] = bottom_plate
             case 4:
-                (left_wall, top_wall, bottom_left_wall, bottom_right_wall) = create_side_walls(
-                    doc, config, objects["TopPlate"], objects["BottomPlate"], "SideWall")
+                (left_wall, top_wall, top_right_wall, bottom_left_wall, bottom_right_wall) \
+                    = create_side_walls(doc, config, objects["TopPlate"], objects["BottomPlate"],
+                        "SideWall")
                 objects["LeftSideWall"] = left_wall
                 objects["TopSideWall"] = top_wall
+                objects["TopRightSideWall"] = top_right_wall
                 objects["BottomLeftSideWall"] = bottom_left_wall
                 objects["BottomRightSideWall"] = bottom_right_wall
             case 5:
@@ -1091,8 +1093,13 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
     doc.recompute()
     prints(f"Raised top plate by {raise_by:.2f} mm.", 2)
 
+    top_right_wall_object = create_top_right_side_wall(doc, config, top_plate,
+        f"TopRight{object_name}")
+    prints("Created top right side wall.", 2)
+
     top_wall_object = create_side_wall(doc, config, bottom_plate_vertices,
         left_wall_vertices, top_plate, max_y, f"Top{object_name}")
+    trim_top_side_wall(top_wall_object, top_right_wall_object)
     prints("Created top side wall.", 2)
 
     bottom_left_wall_object = create_side_wall(doc, config, bottom_plate_vertices,
@@ -1104,7 +1111,58 @@ def create_side_walls(doc, config, top_plate, bottom_plate, object_name):
     prints("Created bottom right side wall.", 2)
 
     prints("Success.", 2)
-    return (left_wall_object, top_wall_object, bottom_left_wall_object, bottom_right_wall_object)
+    return (left_wall_object, top_wall_object, top_right_wall_object, bottom_left_wall_object,
+        bottom_right_wall_object)
+
+
+def create_top_right_side_wall(doc, config, top_plate, object_name):
+    # Get the max x vertex and the edge between it and max y.
+    max_x_vertex = sorted(top_plate.Shape.Vertexes, key=lambda v: v.X, reverse=True)[0]
+    right_edge = None
+    for edge in sorted(top_plate.Shape.Edges, key=lambda e: e.Length, reverse=True):
+        v_0 = edge.Vertexes[0]
+        v_1 = edge.Vertexes[1]
+        if ((is_same_vector_vertex(max_x_vertex, v_0) and (v_0.Y < v_1.Y))
+                or (is_same_vector_vertex(max_x_vertex, v_1) and (v_0.Y > v_1.Y))):
+            right_edge = edge
+            break
+
+    vertex_0 = right_edge.Vertexes[0]
+    vertex_1 = right_edge.Vertexes[1]
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    corners = [
+        FreeCAD.Vector(vertex_0.X, vertex_0.Y, thickness),
+        vertex_to_vector(vertex_0),
+        vertex_to_vector(vertex_1),
+        FreeCAD.Vector(vertex_1.X, vertex_1.Y, thickness),
+        ]
+    top_right_wall_face = make_face_from_corners(corners)
+
+    normal = top_right_wall_face.normalAt(0, 0)
+    if normal.x > 0.0:
+        normal = -normal
+    extrude_vector = thickness * normal
+    top_right_wall = make_solid_from_face(doc, top_right_wall_face, extrude_vector, object_name)
+    doc.recompute()
+
+    # The side wall clips into the top plate, so it needs to be trimmed.
+    trim_top_right_side_wall(top_plate, top_right_wall, normal, right_edge, thickness)
+
+    return top_right_wall
+
+
+def trim_top_right_side_wall(top_plate, top_right_wall, normal, right_edge, thickness):
+    common = top_right_wall.Shape.common(top_plate.Shape)
+    min_z_vertex = sorted(common.Vertexes, key=lambda v: v.Z)[0]
+    trim_edge = min_z_vertex.extrude(thickness * normal)
+    tangent = right_edge.tangentAt(0)
+    if tangent.x < 0.0:
+        tangent = -tangent
+    trim_face_small = trim_edge.extrude(right_edge.Length * tangent)
+    enough = 2.0 * thickness
+    trim_face = expand_face(trim_face_small, enough)
+    trim_shape = trim_face.extrude(enough * VECTOR_ONE_Z)
+    top_right_wall.Shape = top_right_wall.Shape.cut(trim_shape)
 
 
 """
@@ -1180,6 +1238,18 @@ def create_side_wall(doc, config, bottom_plate_vertices, left_wall_vertices, top
     doc.recompute()
 
     return wall_object
+
+
+def trim_top_side_wall(top_wall, top_right_wall):
+    common = top_wall.Shape.common(top_right_wall.Shape)
+    trim_x = common.BoundBox.XMin
+    max_z_vertex = sorted(top_wall.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[0]
+    trim_edge = max_z_vertex.extrude(max_z_vertex.Z * -VECTOR_ONE_Z)
+    trim_face_small = trim_edge.extrude(VECTOR_ONE_Y)
+    extra = 2.0 * sorted(top_wall.Shape.Edges, key=lambda e: e.Length)[0].Length
+    trim_face = expand_face(trim_face_small, extra)
+    trim_shape = trim_face.extrude((max_z_vertex.X-trim_x) * -VECTOR_ONE_X)
+    top_wall.Shape = top_wall.Shape.cut(trim_shape)
 
 
 def create_bottom_right_side_wall(doc, config, top_plate, bottom_left_wall, object_name):
