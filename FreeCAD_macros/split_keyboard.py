@@ -7,7 +7,7 @@ Python version 3.11.
 """
 
 from draftgeoutils import geometry
-from math import atan, degrees, isclose, sqrt
+from math import atan, degrees, isclose, pi, sin, sqrt, tan
 import BOPTools.JoinFeatures
 import configparser
 import os.path
@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 10
+START_AT_STEP = 11
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 10
+STOP_AT_STEP = 11
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -168,6 +168,8 @@ def main():
                     objects["BottomThumbPlate"], "MiddlePlate")
                 objects["BottomMiddlePlate"] = bottom
                 objects["TopMiddlePlate"] = top
+            case 11:
+                create_middle_side_walls(doc, config, objects["TopMiddlePlate"], objects["TopSideWall"], objects["TopThumbPlate"], "MiddleSideWall")
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2304,6 +2306,118 @@ def create_middle_plate_corners(left_edge_vectors, height, centre_x):
         count = count - 1
 
     return corners
+
+
+#----------------------------------------------------------------------x---------------------------
+# Create the side walls that support the top middle plate.
+# Right-side ones are not needed.
+
+
+def create_middle_side_walls(doc, config, top_middle_plate, left_top_side_wall, top_thumb_plate,
+        object_name):
+    (top_edge, left_top_edge, left_bottom_edge, bottom_edge) = get_key_edges(
+        top_middle_plate, get_longer_than(config))
+    (angled_top_side_wall, angle) = create_angled_top_middle_side_wall(doc, config, top_edge,
+        left_top_edge, f"AngledTop{object_name}")
+    prints(f"Success: created AngledTop{object_name}.", 2)
+    top_side_wall = create_top_middle_side_wall(doc, config, top_edge, angle, f"Top{object_name}")
+    prints(f"Success: created Top{object_name}.", 2)
+    prints(f"TODO: create Bottom{object_name}.", 2)
+    prints(f"TODO: create AngledBottom{object_name}.", 2)
+
+
+def create_top_middle_side_wall(doc, config, top_edge, angle, object_name):
+    # The wall needs to be shortened a little at the min x corner so
+    # that it doesn't clip into the angled top wall.
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    trim_length_1 = thickness / sin(angle)
+    trim_length_2 = thickness / tan(angle)
+    trim_length = trim_length_1 + trim_length_2
+
+    min_x_vertex = sorted(top_edge.Vertexes, key=lambda v: v.X)[0]
+    min_x = min_x_vertex.X + trim_length
+    max_x = min_x + top_edge.Length - 2.0*trim_length
+    corners = [
+        FreeCAD.Vector(min_x, min_x_vertex.Y, thickness),
+        FreeCAD.Vector(min_x, min_x_vertex.Y, min_x_vertex.Z),
+        FreeCAD.Vector(max_x, min_x_vertex.Y, min_x_vertex.Z),
+        FreeCAD.Vector(max_x, min_x_vertex.Y, thickness),
+        ]
+    top_side_wall_face = make_face_from_corners(corners)
+    extrude_vector = thickness * -VECTOR_ONE_Y
+    top_side_wall = make_solid_from_face(doc, top_side_wall_face, extrude_vector, object_name)
+
+    return top_side_wall
+
+
+def create_angled_top_middle_side_wall(doc, config, top_edge, left_top_edge, object_name):
+    # The wall needs to be shortened a little at the min x / max y
+    # corner so that it doesn't go past the bottom and top plates.
+    top_vector = top_edge.tangentAt(0)
+    if top_vector.x < 0:
+        top_vector = -top_vector
+    left_vector = left_top_edge.tangentAt(0)
+    if left_vector.x < 0:
+        left_vector = -left_vector
+    angle = top_vector.getAngle(left_vector)
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    trim_length = thickness / tan(angle)
+
+    sorted_edge_vertices = sorted(left_top_edge.Vertexes, key=lambda v: v.X)
+    left_top_vector = vertex_to_vector(sorted_edge_vertices[0])
+    right_bottom_vector = vertex_to_vector(sorted_edge_vertices[1])
+    start_vector = left_top_vector + trim_length*left_vector
+    corners = [
+        FreeCAD.Vector(start_vector.x, start_vector.y, thickness),
+        start_vector,
+        right_bottom_vector,
+        FreeCAD.Vector(right_bottom_vector.x, right_bottom_vector.y, thickness),
+        ]
+    angled_top_side_wall_face = make_face_from_corners(corners)
+    normal = angled_top_side_wall_face.normalAt(0, 0)
+    if normal.x < 0:
+        normal = -normal
+    extrude_vector = thickness * normal
+    angled_top_side_wall = make_solid_from_face(doc, angled_top_side_wall_face, extrude_vector,
+        object_name)
+
+    return (angled_top_side_wall, angle)
+
+
+def get_key_edges(top_middle_plate, longer_than):
+    top_faces = sorted(top_middle_plate.Shape.Faces, key=lambda f: f.Area, reverse=True)
+    top_bottom_face = top_faces[0]
+    max_y = top_bottom_face.BoundBox.YMax
+    min_y = top_bottom_face.BoundBox.YMin
+    if top_bottom_face.CenterOfGravity.z > top_faces[1].CenterOfGravity.z:
+        top_bottom_face = top_faces[1]
+    long_edges = get_long_edges(top_bottom_face, longer_than)
+
+    bottom_edge = None
+    top_edge = None
+    for edge in long_edges:
+        v_0 = edge.Vertexes[0]
+        v_1 = edge.Vertexes[1]
+        if is_close(min_y, v_0.Y) and is_close(min_y, v_1.Y):
+            bottom_edge = edge
+        elif is_close(max_y, v_0.Y) and is_close(max_y, v_1.Y):
+            top_edge = edge
+
+    bottom_vertex = sorted(bottom_edge.Vertexes, key=lambda v: v.X)[0]
+    top_vertex = sorted(top_edge.Vertexes, key=lambda v: v.X)[0]
+    left_bottom_edge = None
+    left_top_edge = None
+    for edge in long_edges:
+        v_0 = edge.Vertexes[0]
+        v_1 = edge.Vertexes[1]
+        if ((is_same_vector_vertex(bottom_vertex, v_0) and (not is_close(min_y, v_1.Y)))
+                or (is_same_vector_vertex(bottom_vertex, v_1) and (not is_close(min_y, v_0.Y)))):
+            left_bottom_edge = edge
+        elif ((is_same_vector_vertex(top_vertex, v_0) and (not is_close(max_y, v_1.Y)))
+                or (is_same_vector_vertex(top_vertex, v_1) and (not is_close(max_y, v_0.Y)))):
+            left_top_edge = edge
+
+    return (top_edge, left_top_edge, left_bottom_edge, bottom_edge)
 
 
 #----------------------------------------------------------------------x---------------------------
