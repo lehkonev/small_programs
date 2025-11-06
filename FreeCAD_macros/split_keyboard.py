@@ -38,16 +38,15 @@ LAYOUT_LEFT_THUMB = [
     (0, 1),  (1, 1),  (2, 1),
     (0, 0),  (1, 0),  (2, 0),
 ]
+L = 0.2 # height/level adjustment (y)
+W = 0.3 # width/length adjustment (x)
 LAYOUT_MIDDLE= [
-    (-3.2, 8), (-2.2, 8), (-1.2, 8), (0, 8),    (1, 8), (2, 8),   (3, 8), (4.2, 8), (5.2, 8), (6.2, 8),
-          (-2.3, 7),                (0, 6.8), (1, 6.8), (2, 6.8), (3, 6.8),             (5.7, 7),
-                                    (0, 5.8), (1, 5.8), (2, 5.8), (3, 5.8),
-                                    (0, 4.8), (1, 4.8), (2, 4.8), (3, 4.8),
-                                    (0, 3.8), (1, 3.8), (2, 3.8), (3, 3.8),
-                                           (0.9, 2.6),   (2.1, 2.6),
-                                      (0.3, 1.6),              (2.7, 1.6),
-                                                   (1.5, 1),
-                                       (0.5, 0),   (1.5, 0),  (2.5, 0),
+    (-1.7+W, 5.8+L),  (-0.5+W, 5.6+L), (0.5+W, 5.6+L), (1.5+W, 5.6+L), (2.5+W, 5.6+L),  (3.7+W, 5.8+L),
+                      (-0.5+W, 4.6+L), (0.5+W, 4.6+L), (1.5+W, 4.6+L), (2.5+W, 4.6+L),
+                      (-0.5+W, 3.6+L), (0.5+W, 3.6+L), (1.5+W, 3.6+L), (2.5+W, 3.6+L),
+                    (-0.8+W, 2.4+L),  (0.4+W, 2.2+L),   (1.6+W, 2.2+L),  (2.8+W, 2.4+L),
+                               (-0.2+W, 1.2+L), (1+W, 1+L),  (2.2+W, 1.2+L),
+                                  (0+W, 0+L),   (1+W, 0+L),    (2+W, 0+L),
 ]
 
 VECTOR_ZERO = FreeCAD.Vector(0.0, 0.0, 0.0)
@@ -74,11 +73,10 @@ STEPS = {
     7: "Creating wrist support...",
     8: "Creating support structures...",
     9: "Rotating everything for creating the middle...",
-    10: "Creating top middle plate...",
-    11: "Creating middle bottom plate...",
-    12: "Creating middle side walls...",
-    13: "Combining and tweaking bottom plates...",
-    14: "Creating and connecting right side...",
+    10: "Creating middle plates...",
+    11: "Creating middle side walls...",
+    12: "Combining and tweaking bottom plates...",
+    13: "Creating and connecting right side...",
 }
 
 def main():
@@ -166,7 +164,10 @@ def main():
             case 9:
                 rotate_everything(config, objects, "LeftSideWall")
             case 10:
-                create_top_middle_plate(doc, config, objects["TopPlate"], objects["BottomThumbPlate"], "TopMiddlePlate")
+                (bottom, top) = create_middle_plates(doc, config, objects["TopPlate"],
+                    objects["BottomThumbPlate"], "MiddlePlate")
+                objects["BottomMiddlePlate"] = bottom
+                objects["TopMiddlePlate"] = top
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2176,34 +2177,60 @@ def rotate_everything(config, objects, rotate_edge_object_name):
 
 
 #----------------------------------------------------------------------x---------------------------
-# Create the top middle plate.
+# Create the top and bottom middle plates.
 
 
-def create_top_middle_plate(doc, config, top, bottom_thumb, object_name):
+def create_middle_plates(doc, config, top, bottom_thumb, object_name):
     # Find the strategic vertices.
     (left_edge_vertices, max_x_vertex, max_z_vertex) \
-        = find_key_vertices_for_top_middle_plate(top, bottom_thumb)
+        = find_key_vertices_for_middle_plate(top, bottom_thumb)
 
     height = max_z_vertex.Z + float(config.get("Keyboard", "LOWER_MIDDLE_MM"))
     edge_corner = FreeCAD.Vector(max_x_vertex.X, left_edge_vertices[0].Y, height)
     switch_faces = create_switch_hole_faces(config, LAYOUT_MIDDLE, edge_corner,
         VECTOR_ONE_X, VECTOR_ONE_Y)
-    switch_faces_TEST = doc.addObject("Part::MultiFuse", f"{object_name}SwitchHolesFaceTEST")
-    switch_faces_TEST.Shape = switch_faces
+    #switch_faces_TEST = doc.addObject("Part::MultiFuse", f"{object_name}SwitchHolesFaceTEST")
+    #switch_faces_TEST.Shape = switch_faces
 
     left_edge_vectors = vertices_to_vectors(left_edge_vertices)
     corners = create_middle_plate_corners(left_edge_vectors, height,
         switch_faces.CenterOfGravity.x)
     plate_face = make_face_from_corners(corners)
-    prints(f"Success: created top middle plate face.", 2)
-    face_TEST = doc.addObject("Part::Feature", f"{object_name}PlateFaceTEST")
-    face_TEST.Shape = plate_face
+    prints(f"Success: created middle plate face.", 2)
+    #face_TEST = doc.addObject("Part::Feature", f"{object_name}PlateFaceTEST")
+    #face_TEST.Shape = plate_face
 
     max_y = switch_faces.BoundBox.YMax + get_edge_buffer(config)
-    # TODO: trim plate to max y.
+    plate_face = trim_middle_plate_to_max_y(plate_face, max_y)
+    #face_TEST = doc.addObject("Part::Feature", f"{object_name}TrimFaceTEST")
+    #face_TEST.Shape = plate_face
+
+    bottom_plate_face = plate_face.copy()
+    bottom_plate_face.Placement.Base.z = bottom_plate_face.Placement.Base.z - height
+    extrude_vector = float(config.get("Keyboard", "CASE_THICKNESS_MM")) * VECTOR_ONE_Z
+    bottom_plate = make_solid_from_face(doc, bottom_plate_face, extrude_vector,
+        f"Bottom{object_name}")
+    prints(f"Success: created bottom middle plate.", 2)
+
+    top_plate_face = plate_face.cut(switch_faces)
+    top_plate = make_solid_from_face(doc, top_plate_face, extrude_vector,
+        f"Top{object_name}")
+    prints(f"Success: created top middle plate.", 2)
+
+    return (bottom_plate, top_plate)
 
 
-def find_key_vertices_for_top_middle_plate(top, bottom_thumb):
+def trim_middle_plate_to_max_y(plate_face, max_y):
+    plate_max_y = plate_face.BoundBox.YMax
+    max_edge = sorted(plate_face.Edges, key=lambda e: e.Length, reverse=True)[0]
+    trim_face = max_edge.extrude(VECTOR_ONE_Z)
+    trim_face = expand_face(trim_face, 1.0)
+    trim_shape = trim_face.extrude((max_y-plate_max_y) * VECTOR_ONE_Y)
+    plate_face = plate_face.cut(trim_shape)
+    return plate_face
+
+
+def find_key_vertices_for_middle_plate(top, bottom_thumb):
     # Max z vertex is needed for calculating the height at which
     # the middle top plate rests.
     top_vertices = sorted(top.Shape.Vertexes, key=lambda v: v.Z, reverse=True)
@@ -2277,6 +2304,7 @@ def create_middle_plate_corners(left_edge_vectors, height, centre_x):
         count = count - 1
 
     return corners
+
 
 #----------------------------------------------------------------------x---------------------------
 
