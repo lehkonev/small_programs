@@ -2397,10 +2397,33 @@ def create_middle_side_walls(doc, config, top_middle_plate, left_top_side_wall, 
     angled_bottom_wall = create_angled_bottom_middle_side_wall(doc, config, bottom_edge,
         left_bottom_edge, middle_wall, f"AngledBottom{object_name}")
     prints(f"Success: created AngledBottom{object_name}.", 2)
+    bottom_wall = create_bottom_middle_side_wall(doc, config, bottom_edge, angled_bottom_wall,
+        f"Bottom{object_name}")
+    prints(f"Success: created Bottom{object_name}.", 2)
+    # TODO: trim the top plate.
     # TODO: create a little triangle block that rests on the top
     # middle plate at the intersection of top thumb plate, top
     # middle plate and top plate's right top side wall.
-    prints(f"TODO: create Bottom{object_name}.", 2)
+
+
+def create_bottom_middle_side_wall(doc, config, bottom_edge, angled_bottom_wall, object_name):
+    vertices = sorted(angled_bottom_wall.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[0]
+    upper_left_vertex = sorted(angled_bottom_wall.Shape.Vertexes, key=lambda v: v.Y)[0]
+    almost_lower_left_vertex = sorted(bottom_edge.Vertexes, key=lambda v: v.X)[0]
+    min_x = upper_left_vertex.X
+    x_diff = min_x - almost_lower_left_vertex.X
+    max_x = almost_lower_left_vertex.X + bottom_edge.Length - x_diff
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    corners = [
+        FreeCAD.Vector(min_x, upper_left_vertex.Y, thickness),
+        FreeCAD.Vector(min_x, upper_left_vertex.Y, upper_left_vertex.Z),
+        FreeCAD.Vector(max_x, upper_left_vertex.Y, upper_left_vertex.Z),
+        FreeCAD.Vector(max_x, upper_left_vertex.Y, thickness),
+        ]
+    bottom_side_wall_face = make_face_from_corners(corners)
+    extrude_vector = thickness * -VECTOR_ONE_Y
+    bottom_side_wall = make_solid_from_face(doc, bottom_side_wall_face, extrude_vector, object_name)
+    return bottom_side_wall
 
 
 def create_angled_bottom_middle_side_wall(doc, config, bottom_edge, left_bottom_edge, middle_wall,
