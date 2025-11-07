@@ -2400,71 +2400,10 @@ def create_middle_side_walls(doc, config, top_middle_plate, left_top_side_wall, 
     bottom_wall = create_bottom_middle_side_wall(doc, config, bottom_edge, angled_bottom_wall,
         f"Bottom{object_name}")
     prints(f"Success: created Bottom{object_name}.", 2)
-    # TODO: trim the top plate.
+    trim_top_middle_plate(config, top_middle_plate, bottom_wall)
     # TODO: create a little triangle block that rests on the top
     # middle plate at the intersection of top thumb plate, top
     # middle plate and top plate's right top side wall.
-
-
-def create_bottom_middle_side_wall(doc, config, bottom_edge, angled_bottom_wall, object_name):
-    vertices = sorted(angled_bottom_wall.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[0]
-    upper_left_vertex = sorted(angled_bottom_wall.Shape.Vertexes, key=lambda v: v.Y)[0]
-    almost_lower_left_vertex = sorted(bottom_edge.Vertexes, key=lambda v: v.X)[0]
-    min_x = upper_left_vertex.X
-    x_diff = min_x - almost_lower_left_vertex.X
-    max_x = almost_lower_left_vertex.X + bottom_edge.Length - x_diff
-    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-    corners = [
-        FreeCAD.Vector(min_x, upper_left_vertex.Y, thickness),
-        FreeCAD.Vector(min_x, upper_left_vertex.Y, upper_left_vertex.Z),
-        FreeCAD.Vector(max_x, upper_left_vertex.Y, upper_left_vertex.Z),
-        FreeCAD.Vector(max_x, upper_left_vertex.Y, thickness),
-        ]
-    bottom_side_wall_face = make_face_from_corners(corners)
-    extrude_vector = thickness * -VECTOR_ONE_Y
-    bottom_side_wall = make_solid_from_face(doc, bottom_side_wall_face, extrude_vector, object_name)
-    return bottom_side_wall
-
-
-def create_angled_bottom_middle_side_wall(doc, config, bottom_edge, left_bottom_edge, middle_wall,
-        object_name):
-    # The wall needs to go a little past its min y vertex to create a
-    # straight line, but stop at min y + thickness to accommodate the
-    # bottom edge side wall.
-    max_y_vertex = sorted(left_bottom_edge.Vertexes, key=lambda v: v.Y, reverse=True)[0]
-    tangent = left_bottom_edge.tangentAt(0)
-    if tangent.y > 0:
-        tangent = -tangent
-    angle = tangent.getAngle(-VECTOR_ONE_Y)
-    min_y = bottom_edge.Vertexes[0].Y
-    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-    y_length = max_y_vertex.Y - min_y - thickness
-    wall_length = y_length / cos(angle)
-    wall_edge = max_y_vertex.extrude(wall_length * tangent)
-    height = max_y_vertex.Z - thickness
-    wall_face = wall_edge.extrude(height * -VECTOR_ONE_Z)
-
-    normal = wall_face.normalAt(0, 0)
-    if normal.x < 0:
-        normal = -normal
-    extrude_vector = thickness * normal
-    angled_bottom_side_wall = make_solid_from_face(doc, wall_face, extrude_vector, object_name)
-
-    # The side wall clips into the middle side wall, so it needs
-    # to be trimmed.
-    trim_angled_bottom_middle_side_wall(angled_bottom_side_wall, middle_wall, normal, tangent)
-
-    return angled_bottom_side_wall
-
-
-def trim_angled_bottom_middle_side_wall(angled_wall, middle_wall, tangent, normal):
-    common = angled_wall.Shape.common(middle_wall.Shape)
-    common_min_y_edge = sorted(common.Edges, key=lambda e: e.CenterOfGravity.y)[0]
-    trim_face_small = common_min_y_edge.extrude(tangent)
-    enough = 2.0 * sorted(angled_wall.Shape.Edges, key=lambda e: e.Length)[0].Length
-    trim_face = expand_face(trim_face_small, enough)
-    trim_shape = trim_face.extrude(enough * -normal)
-    angled_wall.Shape = angled_wall.Shape.cut(trim_shape)
 
 
 def create_angled_top_middle_side_wall(doc, config, top_edge, left_top_edge, object_name):
@@ -2544,6 +2483,108 @@ def create_middle_middle_side_wall(doc, config, middle_edge, object_name):
     middle_side_wall = make_solid_from_face(doc, middle_side_wall_face, extrude_vector, object_name)
 
     return middle_side_wall
+
+
+def create_angled_bottom_middle_side_wall(doc, config, bottom_edge, left_bottom_edge, middle_wall,
+        object_name):
+    # The wall needs to go a little past its min y vertex to create a
+    # straight line, but stop at min y + thickness to accommodate the
+    # bottom edge side wall.
+    max_y_vertex = sorted(left_bottom_edge.Vertexes, key=lambda v: v.Y, reverse=True)[0]
+    tangent = left_bottom_edge.tangentAt(0)
+    if tangent.y > 0:
+        tangent = -tangent
+    angle = tangent.getAngle(-VECTOR_ONE_Y)
+    min_y = bottom_edge.Vertexes[0].Y
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    y_length = max_y_vertex.Y - min_y - thickness
+    wall_length = y_length / cos(angle)
+    wall_edge = max_y_vertex.extrude(wall_length * tangent)
+    height = max_y_vertex.Z - thickness
+    wall_face = wall_edge.extrude(height * -VECTOR_ONE_Z)
+
+    normal = wall_face.normalAt(0, 0)
+    if normal.x < 0:
+        normal = -normal
+    extrude_vector = thickness * normal
+    angled_bottom_side_wall = make_solid_from_face(doc, wall_face, extrude_vector, object_name)
+
+    # The side wall clips into the middle side wall, so it needs
+    # to be trimmed.
+    trim_angled_bottom_middle_side_wall(angled_bottom_side_wall, middle_wall, normal, tangent)
+
+    return angled_bottom_side_wall
+
+
+def trim_angled_bottom_middle_side_wall(angled_wall, middle_wall, tangent, normal):
+    common = angled_wall.Shape.common(middle_wall.Shape)
+    common_min_y_edge = sorted(common.Edges, key=lambda e: e.CenterOfGravity.y)[0]
+    trim_face_small = common_min_y_edge.extrude(tangent)
+    enough = 2.0 * sorted(angled_wall.Shape.Edges, key=lambda e: e.Length)[0].Length
+    trim_face = expand_face(trim_face_small, enough)
+    trim_shape = trim_face.extrude(enough * -normal)
+    angled_wall.Shape = angled_wall.Shape.cut(trim_shape)
+
+
+def create_bottom_middle_side_wall(doc, config, bottom_edge, angled_bottom_wall, object_name):
+    vertices = sorted(angled_bottom_wall.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[:4]
+    upper_left_vertex = sorted(vertices, key=lambda v: v.Y)[0]
+    almost_lower_left_vertex = sorted(bottom_edge.Vertexes, key=lambda v: v.X)[0]
+    min_x = upper_left_vertex.X
+    x_diff = min_x - almost_lower_left_vertex.X
+    max_x = almost_lower_left_vertex.X + bottom_edge.Length - x_diff
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    corners = [
+        FreeCAD.Vector(min_x, upper_left_vertex.Y, thickness),
+        FreeCAD.Vector(min_x, upper_left_vertex.Y, upper_left_vertex.Z),
+        FreeCAD.Vector(max_x, upper_left_vertex.Y, upper_left_vertex.Z),
+        FreeCAD.Vector(max_x, upper_left_vertex.Y, thickness),
+        ]
+    bottom_side_wall_face = make_face_from_corners(corners)
+    extrude_vector = thickness * -VECTOR_ONE_Y
+    bottom_side_wall = make_solid_from_face(doc, bottom_side_wall_face, extrude_vector, object_name)
+    return bottom_side_wall
+
+
+def trim_top_middle_plate(config, top_plate, bottom_wall):
+    # To create the trim shape, take:
+    #   1) the shorter edge at the min z / min y / smaller x corner of
+    #      the top plate and
+    #   2) the edge at the max z / min x corner of the bottom wall.
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    min_y_vertices = sorted(top_plate.Shape.Vertexes, key=lambda v: v.Y)[:4]
+    min_z_vertices = sorted(min_y_vertices, key=lambda v: v.Z)[:2]
+    top_plate_min_x_vertex = sorted(min_z_vertices, key=lambda v: v.X)[0]
+    top_plate_edges = []
+    for edge in top_plate.Shape.Edges:
+        # The vertex is connected to three edges, find them all.
+        vertex_0 = edge.Vertexes[0]
+        vertex_1 = edge.Vertexes[1]
+        if ((not is_close(edge.Length, thickness))
+                and (is_same_vector_vertex(vertex_0, top_plate_min_x_vertex)
+                    or is_same_vector_vertex(vertex_1, top_plate_min_x_vertex))):
+            top_plate_edges.append(edge)
+
+    number = len(top_plate_edges)
+    if number != 2:
+        raise Exception(f"Error: found {number} top plate edges (should be three).")
+
+    top_plate_edge = sorted(top_plate_edges, key=lambda e: e.Length)[0]
+    vertices = sorted(top_plate_edge.Vertexes, key=lambda v: v.Y)
+    min_y_vector = vertex_to_vector(vertices[0])
+    max_y_vector = vertex_to_vector(vertices[1])
+
+    min_x_edges = sorted(bottom_wall.Shape.Edges, key=lambda e: e.CenterOfGravity.x)[:4]
+    bottom_wall_edge = sorted(min_x_edges, key=lambda e: e.CenterOfGravity.z, reverse=True)[0]
+    vertices = sorted(bottom_wall_edge.Vertexes, key=lambda v: v.Y)
+    max_x_vector = vertex_to_vector(vertices[0])
+    mid_vector = vertex_to_vector(vertices[1])
+
+    corners = [min_y_vector, max_y_vector, mid_vector, max_x_vector]
+    trim_face = make_face_from_corners(corners)
+    trim_shape = trim_face.extrude(thickness * VECTOR_ONE_Z)
+    mirror_shape = trim_shape.mirror(top_plate.Shape.CenterOfGravity, VECTOR_ONE_X)
+    top_plate.Shape = top_plate.Shape.cut(trim_shape.fuse(mirror_shape))
 
 
 def get_key_edges(top_middle_plate, longer_than):
