@@ -2401,9 +2401,9 @@ def create_middle_side_walls(doc, config, top_middle_plate, left_top_side_wall, 
         f"Bottom{object_name}")
     prints(f"Success: created Bottom{object_name}.", 2)
     trim_top_middle_plate(config, top_middle_plate, bottom_wall)
-    # TODO: create a little triangle block that rests on the top
-    # middle plate at the intersection of top thumb plate, top
-    # middle plate and top plate's right top side wall.
+    triangle = create_little_triangle_on_top_plate(doc, config, top_middle_plate, top_thumb_plate,
+        f"{object_name}Triangle")
+    # TODO: attach_triangle_to_angled_bottom_side_wall(top_middle_plate, angled_bottom_wall, triangle)
 
 
 def create_angled_top_middle_side_wall(doc, config, top_edge, left_top_edge, object_name):
@@ -2585,6 +2585,50 @@ def trim_top_middle_plate(config, top_plate, bottom_wall):
     trim_shape = trim_face.extrude(thickness * VECTOR_ONE_Z)
     mirror_shape = trim_shape.mirror(top_plate.Shape.CenterOfGravity, VECTOR_ONE_X)
     top_plate.Shape = top_plate.Shape.cut(trim_shape.fuse(mirror_shape))
+
+
+def create_little_triangle_on_top_plate(doc, config, top_middle_plate, top_thumb_plate,
+        object_name):
+    thumb_edges = sorted(top_thumb_plate.Shape.Edges,
+        key=lambda e: e.CenterOfGravity.x, reverse=True)[0:3]
+    thumb_edge = sorted(thumb_edges, key=lambda e: e.CenterOfGravity.y, reverse=True)[0]
+    #thumb_edge_TEST = doc.addObject("Part::Feature", f"{object_name}EdgeTEST")
+    #thumb_edge_TEST.Shape = thumb_edge
+    thumb_edge_vertices = sorted(thumb_edge.Vertexes, key=lambda v: v.Y)
+    bottom_thumb_vector = vertex_to_vector(thumb_edge_vertices[0])
+    max_y_vector = vertex_to_vector(thumb_edge_vertices[1])
+    prints(f"TEST: max_y_vector: {format_vector(max_y_vector)}", 3)
+
+    # Find the intersection point of the thumb plate edge and
+    # an edge of the top middle plate.
+    top_plate_max_z = sorted(top_middle_plate.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[0].Z
+    thumb_line = Part.Line(bottom_thumb_vector, max_y_vector)
+    intersect_vector = None
+    for edge in sorted(top_middle_plate.Shape.Edges, key=lambda e: e.Length, reverse=True):
+        line = Part.Line(vertex_to_vector(edge.Vertexes[0]), vertex_to_vector(edge.Vertexes[1]))
+        point_list = line.intersect(thumb_line)
+        if (len(point_list) == 1) and (is_close(point_list[0].Z, top_plate_max_z)):
+            prints(f"TEST: intersect point: {format_vertices(point_list)}", 3)
+            intersect_vector = vertex_to_vector(point_list[0])
+            break
+    if intersect_vector is None:
+        raise Exception("Error: couldn't find intersection of top thumb and top middle plates.")
+
+    base_vector = FreeCAD.Vector(max_y_vector.x, max_y_vector.y, intersect_vector.z)
+    prints(f"TEST: base_vector: {format_vector(base_vector)}", 3)
+    corners = [
+        max_y_vector,
+        intersect_vector,
+        base_vector,
+        ]
+    triangle_face = make_face_from_corners(corners)
+    normal = triangle_face.normalAt(0, 0)
+    if normal.x < 0:
+        normal = -normal
+    extrude_vector = float(config.get("Keyboard", "CASE_THICKNESS_MM")) * normal
+    triangle = make_solid_from_face(doc, triangle_face, extrude_vector, object_name)
+
+    return triangle
 
 
 def get_key_edges(top_middle_plate, longer_than):
