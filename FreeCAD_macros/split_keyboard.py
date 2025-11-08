@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 11
+START_AT_STEP = 12
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 11
+STOP_AT_STEP = 12
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -179,6 +179,8 @@ def main():
                 objects["MiddleMiddleSideWall"] = middle
                 objects["AngledBottomMiddleSideWall"] = angled_bottom
                 objects["BottomMiddleSideWall"] = bottom
+            case 12:
+                combine_and_tweak_bottom_plates(doc, config, objects["BottomPlate"], objects["WristSupportConnectBottom"], objects["BottomThumbPlate"], objects["BottomMiddlePlate"], objects["ThumbPlateSupportStopperLower"], objects["ThumbPlateSupportStopperUpper"], "BottomPlate")
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2687,6 +2689,33 @@ def attach_triangle_to_angled_bottom_side_wall(config, top_plate, bottom_wall, t
     top_plate.Shape = top_plate.Shape.cut(trim_shape.fuse(mirror_shape))
 
     bottom_wall.Shape = bottom_wall.Shape.fuse(bottom_part.fuse(triangle))
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that fuse, trim and tweak the bottom plates.
+
+
+def combine_and_tweak_bottom_plates(doc, config, main, wrist, thumb, middle, lower_stopper,
+        upper_stopper, object_name):
+    wrist_filler = make_filler_on_wrist_plate(config, wrist)
+    wrist_filler_TEST = doc.addObject("Part::Feature", f"{object_name}WristFillerTEST")
+    wrist_filler_TEST.Shape = wrist_filler
+
+
+def make_filler_on_wrist_plate(config, wrist):
+    bottom_vertices = list(filter(lambda v: is_close(v.Z, 0.0), wrist.Shape.Vertexes))
+    vectors = vertices_to_vectors(sorted(bottom_vertices, key=lambda v: v.X)[:5])
+    min_x_vector = vectors[1]
+    corner_vector = vectors[3]
+    end_direction_vector = vectors[4]
+    direction_vector = end_direction_vector - corner_vector
+    direction_vector.normalize()
+    length = min_x_vector.distanceToPoint(corner_vector)
+    corners = [min_x_vector, corner_vector, corner_vector + length*direction_vector]
+    wrist_filler_face = make_face_from_corners(corners)
+    wrist_filler_shape = wrist_filler_face.extrude(
+        float(config.get("Keyboard", "CASE_THICKNESS_MM")) * VECTOR_ONE_Z)
+    return wrist_filler_shape
 
 
 #----------------------------------------------------------------------x---------------------------
