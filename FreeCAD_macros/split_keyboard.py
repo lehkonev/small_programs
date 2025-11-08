@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 12
+START_AT_STEP = 13
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 12
+STOP_AT_STEP = 13
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -76,7 +76,8 @@ STEPS = {
     10: "Creating middle plates...",
     11: "Creating middle side walls...",
     12: "Combining and tweaking bottom plates...",
-    13: "Creating and connecting right side...",
+    13: "Cleaning up solids...",
+    14: "Creating and connecting right side...",
 }
 
 def main():
@@ -185,6 +186,12 @@ def main():
                     objects["BottomMiddlePlate"], objects["ThumbPlateSupportStopperLower"],
                     objects["ThumbPlateSupportStopperUpper"], "FullBottomPlate")
                 objects["FullBottomPlate"] = bottom
+            case 13:
+                # Fusing leaves the unnecessary/internal edges on shapes. Some
+                # of them were useful when creating other shapes, so they are
+                # cleaned up only now.
+                for obj in doc.Objects:
+                    obj.Shape = obj.Shape.removeSplitter()
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -1551,7 +1558,6 @@ def create_wrist_support(doc, config, bottom_plate, object_name):
     long_side_wall_object = create_wrist_support_side_wall(doc, config,
         long_wall_corners, centre, f"{object_name}LongSideWall")
 
-    # TODO: This conserves the edges/vertices inside the shape, how to remove?
     prints(f"Fusing connection and bottom pieces...", 2)
     fused = connect_object.Shape.fuse(support_bottom_object.Shape)
     connect_bottom_object = doc.addObject("Part::Feature", f"{object_name}ConnectBottom")
@@ -1789,7 +1795,6 @@ def create_lower_edge_thumb_plate_support(doc, config, top_plate, object_name):
     thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
     lower_support_shape_1 = lower_support_face.extrude(thickness/2.0 * normal)
     lower_support_shape_2 = lower_support_face.extrude(thickness/2.0 * -normal)
-    # TODO: This fusion also retains the original edges...
     lower_support_shape = lower_support_shape_1.fuse(lower_support_shape_2)
     lower_support = doc.addObject("Part::Feature", f"{object_name}")
     lower_support.Shape = lower_support_shape
@@ -1810,7 +1815,6 @@ def create_upper_edge_thumb_plate_support(doc, config, top_plate, bottom_plate, 
 
     (bottom_face, bottom_normal, bottom_tangent_1, bottom_tangent_2, longest_edge) \
         = get_bottom_face_attributes(top_plate)
-
 
     # Displace the (non-)starting point.
     thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
