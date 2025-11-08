@@ -180,7 +180,11 @@ def main():
                 objects["AngledBottomMiddleSideWall"] = angled_bottom
                 objects["BottomMiddleSideWall"] = bottom
             case 12:
-                combine_and_tweak_bottom_plates(doc, config, objects["BottomPlate"], objects["WristSupportConnectBottom"], objects["BottomThumbPlate"], objects["BottomMiddlePlate"], objects["ThumbPlateSupportStopperLower"], objects["ThumbPlateSupportStopperUpper"], "BottomPlate")
+                bottom = combine_and_tweak_bottom_plates(doc, config, objects["BottomPlate"],
+                    objects["WristSupportConnectBottom"], objects["BottomThumbPlate"],
+                    objects["BottomMiddlePlate"], objects["ThumbPlateSupportStopperLower"],
+                    objects["ThumbPlateSupportStopperUpper"], "FullBottomPlate")
+                objects["FullBottomPlate"] = bottom
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2698,8 +2702,42 @@ def attach_triangle_to_angled_bottom_side_wall(config, top_plate, bottom_wall, t
 def combine_and_tweak_bottom_plates(doc, config, main, wrist, thumb, middle, lower_stopper,
         upper_stopper, object_name):
     wrist_filler = make_filler_on_wrist_plate(config, wrist)
-    wrist_filler_TEST = doc.addObject("Part::Feature", f"{object_name}WristFillerTEST")
-    wrist_filler_TEST.Shape = wrist_filler
+    #wrist_filler_TEST = doc.addObject("Part::Feature", f"{object_name}WristFillerTEST")
+    #wrist_filler_TEST.Shape = wrist_filler
+    prints(f"Success: made wrist plate filler shape.", 2)
+
+    (filler, trim_y_1, trim_y_2) = make_filler_between_wrist_and_thumb_plates(config, wrist, thumb)
+    #filler_TEST = doc.addObject("Part::Feature", f"{object_name}FillerTEST")
+    #filler_TEST.Shape = filler
+    prints(f"Success: made wrist/thumb plate filler shape.", 2)
+
+    trim_shape = make_trim_shape(config, trim_y_1, trim_y_2)
+    #trim_TEST = doc.addObject("Part::Feature", f"{object_name}TrimTEST")
+    #trim_TEST.Shape = trim_shape
+
+    half_trim = make_halving_trim_for_middle_bottom_plate(config, middle)
+    trim_shape = trim_shape.fuse(lower_stopper.Shape)
+    trim_shape = trim_shape.fuse(upper_stopper.Shape)
+    trim_shape = trim_shape.fuse(half_trim)
+    prints(f"Success: made trim shape.", 2)
+
+    bottom_shape = main.Shape.fuse(wrist.Shape)
+    bottom_shape = bottom_shape.fuse(thumb.Shape)
+    bottom_shape = bottom_shape.fuse(middle.Shape)
+    bottom_shape = bottom_shape.fuse(wrist_filler)
+    bottom_shape = bottom_shape.fuse(filler)
+    bottom_shape = bottom_shape.cut(trim_shape)
+    bottom = doc.addObject("Part::Feature", f"{object_name}")
+    bottom.Shape = bottom_shape
+    prints(f"Success: fused and cut bottom plate.", 2)
+
+    doc.removeObject(main.Name)
+    doc.removeObject(wrist.Name)
+    doc.removeObject(thumb.Name)
+    doc.removeObject(middle.Name)
+    prints(f"Success: removed old bottom plates.", 2)
+
+    return bottom
 
 
 def make_filler_on_wrist_plate(config, wrist):
@@ -2716,6 +2754,47 @@ def make_filler_on_wrist_plate(config, wrist):
     wrist_filler_shape = wrist_filler_face.extrude(
         float(config.get("Keyboard", "CASE_THICKNESS_MM")) * VECTOR_ONE_Z)
     return wrist_filler_shape
+
+
+def make_filler_between_wrist_and_thumb_plates(config, wrist, thumb):
+    # Second to min y point on the wrist plate.
+    bottom_vertices = list(filter(lambda v: is_close(v.Z, 0.0), wrist.Shape.Vertexes))
+    min_y_vertex = sorted(bottom_vertices, key=lambda v: v.Y)[1]
+    # Four min x vertices on the thumb plate.
+    bottom_vertices = list(filter(lambda v: is_close(v.Z, 0.0), thumb.Shape.Vertexes))
+    corners = sorted(bottom_vertices, key=lambda v: v.X)[:4]
+    corners.append(min_y_vertex)
+    filler_face = make_face_from_corners(vertices_to_vectors(corners))
+    trimmed_filler_face = filler_face.cut(wrist.Shape)
+    trimmed_min_y_vertex = sorted(trimmed_filler_face.Vertexes, key=lambda v: v.Y)[0]
+    filler_shape = trimmed_filler_face.extrude(
+        float(config.get("Keyboard", "CASE_THICKNESS_MM")) * VECTOR_ONE_Z)
+    return (filler_shape, min_y_vertex, trimmed_min_y_vertex)
+
+
+def make_trim_shape(config, trim_y_1, trim_y_2):
+    edge = Part.Edge(trim_y_1, trim_y_2)
+    face = edge.extrude(float(config.get("Keyboard", "CASE_THICKNESS_MM")) * VECTOR_ONE_Z)
+    normal = face.normalAt(0, 0)
+    if normal.x < 0:
+        normal = -normal
+    shape = face.extrude(edge.Length * normal)
+    return shape
+
+
+def make_halving_trim_for_middle_bottom_plate(config, middle):
+    centre = middle.Shape.CenterOfGravity
+    y_length = middle.Shape.BoundBox.YMax - middle.Shape.BoundBox.YMin
+    edge_1 = vector_to_vertex(centre).extrude(y_length * VECTOR_ONE_Y)
+    edge_2 = vector_to_vertex(centre).extrude(y_length * -VECTOR_ONE_Y)
+    edge = edge_1.fuse(edge_2)
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    face_1 = edge.extrude(thickness * VECTOR_ONE_Z)
+    face_2 = edge.extrude(thickness * -VECTOR_ONE_Z)
+    face = face_1.fuse(face_2)
+    x_length = middle.Shape.BoundBox.XMax - middle.Shape.BoundBox.XMin
+    shape = face.extrude(x_length * VECTOR_ONE_X)
+    return shape
 
 
 #----------------------------------------------------------------------x---------------------------
