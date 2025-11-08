@@ -171,7 +171,14 @@ def main():
                 objects["BottomMiddlePlate"] = bottom
                 objects["TopMiddlePlate"] = top
             case 11:
-                create_middle_side_walls(doc, config, objects["TopMiddlePlate"], objects["TopSideWall"], objects["TopThumbPlate"], "MiddleSideWall")
+                (top, angled_top, middle, angled_bottom, bottom) = create_middle_side_walls(
+                    doc, config, objects["TopMiddlePlate"], objects["TopSideWall"],
+                    objects["TopThumbPlate"], "MiddleSideWall")
+                objects["TopMiddleSideWall"] = top
+                objects["AngledTopMiddleSideWall"] = angled_top
+                objects["MiddleMiddleSideWall"] = middle
+                objects["AngledBottomMiddleSideWall"] = angled_bottom
+                objects["BottomMiddleSideWall"] = bottom
             case bigger if bigger < len(STEPS):
                 prints("TODO", 2)
             case _:
@@ -2401,9 +2408,44 @@ def create_middle_side_walls(doc, config, top_middle_plate, left_top_side_wall, 
         f"Bottom{object_name}")
     prints(f"Success: created Bottom{object_name}.", 2)
     trim_top_middle_plate(config, top_middle_plate, bottom_wall)
-    triangle = create_little_triangle_on_top_plate(doc, config, top_middle_plate, top_thumb_plate,
-        f"{object_name}Triangle")
-    # TODO: attach_triangle_to_angled_bottom_side_wall(top_middle_plate, angled_bottom_wall, triangle)
+    triangle = create_little_triangle_on_top_plate(config, top_middle_plate, top_thumb_plate)
+    attach_triangle_to_angled_bottom_side_wall(config, top_middle_plate, angled_bottom_wall,
+        triangle)
+    prints(f"Success: created a little triangle protrusion on AngledBottom{object_name}.", 2)
+    doc.recompute()
+    return (top_wall, angled_top_wall, middle_wall, angled_bottom_wall, bottom_wall)
+
+
+def get_key_edges(top_middle_plate, longer_than):
+    top_faces = sorted(top_middle_plate.Shape.Faces, key=lambda f: f.Area, reverse=True)
+    top_bottom_face = top_faces[0]
+    max_y = top_bottom_face.BoundBox.YMax
+    min_y = top_bottom_face.BoundBox.YMin
+    if top_bottom_face.CenterOfGravity.z > top_faces[1].CenterOfGravity.z:
+        top_bottom_face = top_faces[1]
+    long_edges = get_long_edges(top_bottom_face, longer_than)
+
+    bottom_edge = None
+    top_edge = None
+    remaining_edges = []
+    for edge in long_edges:
+        vertex_0 = edge.Vertexes[0]
+        vertex_1 = edge.Vertexes[1]
+        if is_close(min_y, vertex_0.Y) and is_close(min_y, vertex_1.Y):
+            bottom_edge = edge
+        elif is_close(max_y, vertex_0.Y) and is_close(max_y, vertex_1.Y):
+            top_edge = edge
+        elif ((edge.CenterOfGravity.x < top_bottom_face.CenterOfGravity.x)
+                and (edge.Length > longer_than)):
+            # Discard the right-side edges and the short bottom edge.
+            remaining_edges.append(edge)
+
+    number = len(remaining_edges)
+    if number != 3:
+        raise Exception(f"Error: found {number} remaining/middle edges (should be three).")
+
+    sorted_edges = sorted(remaining_edges, key=lambda e: e.CenterOfGravity.y)
+    return (top_edge, sorted_edges[2], sorted_edges[1], sorted_edges[0], bottom_edge)
 
 
 def create_angled_top_middle_side_wall(doc, config, top_edge, left_top_edge, object_name):
@@ -2587,8 +2629,7 @@ def trim_top_middle_plate(config, top_plate, bottom_wall):
     top_plate.Shape = top_plate.Shape.cut(trim_shape.fuse(mirror_shape))
 
 
-def create_little_triangle_on_top_plate(doc, config, top_middle_plate, top_thumb_plate,
-        object_name):
+def create_little_triangle_on_top_plate(config, top_middle_plate, top_thumb_plate):
     thumb_edges = sorted(top_thumb_plate.Shape.Edges,
         key=lambda e: e.CenterOfGravity.x, reverse=True)[0:3]
     thumb_edge = sorted(thumb_edges, key=lambda e: e.CenterOfGravity.y, reverse=True)[0]
@@ -2597,7 +2638,7 @@ def create_little_triangle_on_top_plate(doc, config, top_middle_plate, top_thumb
     thumb_edge_vertices = sorted(thumb_edge.Vertexes, key=lambda v: v.Y)
     bottom_thumb_vector = vertex_to_vector(thumb_edge_vertices[0])
     max_y_vector = vertex_to_vector(thumb_edge_vertices[1])
-    prints(f"TEST: max_y_vector: {format_vector(max_y_vector)}", 3)
+    #prints(f"TEST: max_y_vector: {format_vector(max_y_vector)}", 3)
 
     # Find the intersection point of the thumb plate edge and
     # an edge of the top middle plate.
@@ -2608,14 +2649,14 @@ def create_little_triangle_on_top_plate(doc, config, top_middle_plate, top_thumb
         line = Part.Line(vertex_to_vector(edge.Vertexes[0]), vertex_to_vector(edge.Vertexes[1]))
         point_list = line.intersect(thumb_line)
         if (len(point_list) == 1) and (is_close(point_list[0].Z, top_plate_max_z)):
-            prints(f"TEST: intersect point: {format_vertices(point_list)}", 3)
+            #prints(f"TEST: intersect point: {format_vertices(point_list)}", 3)
             intersect_vector = vertex_to_vector(point_list[0])
             break
     if intersect_vector is None:
         raise Exception("Error: couldn't find intersection of top thumb and top middle plates.")
 
     base_vector = FreeCAD.Vector(max_y_vector.x, max_y_vector.y, intersect_vector.z)
-    prints(f"TEST: base_vector: {format_vector(base_vector)}", 3)
+    #prints(f"TEST: base_vector: {format_vector(base_vector)}", 3)
     corners = [
         max_y_vector,
         intersect_vector,
@@ -2626,41 +2667,26 @@ def create_little_triangle_on_top_plate(doc, config, top_middle_plate, top_thumb
     if normal.x < 0:
         normal = -normal
     extrude_vector = float(config.get("Keyboard", "CASE_THICKNESS_MM")) * normal
-    triangle = make_solid_from_face(doc, triangle_face, extrude_vector, object_name)
-
+    triangle = triangle_face.extrude(extrude_vector)
     return triangle
 
 
-def get_key_edges(top_middle_plate, longer_than):
-    top_faces = sorted(top_middle_plate.Shape.Faces, key=lambda f: f.Area, reverse=True)
-    top_bottom_face = top_faces[0]
-    max_y = top_bottom_face.BoundBox.YMax
-    min_y = top_bottom_face.BoundBox.YMin
-    if top_bottom_face.CenterOfGravity.z > top_faces[1].CenterOfGravity.z:
-        top_bottom_face = top_faces[1]
-    long_edges = get_long_edges(top_bottom_face, longer_than)
+def attach_triangle_to_angled_bottom_side_wall(config, top_plate, bottom_wall, triangle):
+    # Extrude the bottom of the triangle.
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    bottom_part = None
+    for face in triangle.Faces:
+        normal = face.normalAt(0, 0)
+        if is_close(abs(normal.z), 1.0):
+            bottom_part = face.extrude(thickness * -VECTOR_ONE_Z)
+            break
 
-    bottom_edge = None
-    top_edge = None
-    remaining_edges = []
-    for edge in long_edges:
-        vertex_0 = edge.Vertexes[0]
-        vertex_1 = edge.Vertexes[1]
-        if is_close(min_y, vertex_0.Y) and is_close(min_y, vertex_1.Y):
-            bottom_edge = edge
-        elif is_close(max_y, vertex_0.Y) and is_close(max_y, vertex_1.Y):
-            top_edge = edge
-        elif ((edge.CenterOfGravity.x < top_bottom_face.CenterOfGravity.x)
-                and (edge.Length > longer_than)):
-            # Discard the right-side edges and the short bottom edge.
-            remaining_edges.append(edge)
+    # Trim the top middle plate.
+    trim_shape = bottom_part.copy()
+    mirror_shape = trim_shape.mirror(top_plate.Shape.CenterOfGravity, VECTOR_ONE_X)
+    top_plate.Shape = top_plate.Shape.cut(trim_shape.fuse(mirror_shape))
 
-    number = len(remaining_edges)
-    if number != 3:
-        raise Exception(f"Error: found {number} remaining/middle edges (should be three).")
-
-    sorted_edges = sorted(remaining_edges, key=lambda e: e.CenterOfGravity.y)
-    return (top_edge, sorted_edges[2], sorted_edges[1], sorted_edges[0], bottom_edge)
+    bottom_wall.Shape = bottom_wall.Shape.fuse(bottom_part.fuse(triangle))
 
 
 #----------------------------------------------------------------------x---------------------------
