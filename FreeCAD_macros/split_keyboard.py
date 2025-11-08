@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 13
+START_AT_STEP = 14
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 13
+STOP_AT_STEP = 14
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -192,8 +192,10 @@ def main():
                 # cleaned up only now.
                 for obj in doc.Objects:
                     obj.Shape = obj.Shape.removeSplitter()
-            case bigger if bigger < len(STEPS):
-                prints("TODO", 2)
+            case 14:
+                exclusion_list = ["TopMiddlePlate", "TopMiddleSideWall", "BottomMiddleSideWall"]
+                centre = objects["TopMiddlePlate"].Shape.CenterOfGravity
+                create_right_side(doc, centre, exclusion_list)
             case _:
                 break
 
@@ -2799,6 +2801,20 @@ def make_halving_trim_for_middle_bottom_plate(config, middle):
     x_length = middle.Shape.BoundBox.XMax - middle.Shape.BoundBox.XMin
     shape = face.extrude(x_length * VECTOR_ONE_X)
     return shape
+
+
+#----------------------------------------------------------------------x---------------------------
+# The function that creates the right side.
+
+
+def create_right_side(doc, centre, exclusion_list):
+    for obj in doc.Objects:
+        if obj.Name in exclusion_list:
+            continue
+        elif obj.ViewObject.isVisible():
+            mirror_shape = obj.Shape.mirror(centre, VECTOR_ONE_X)
+            mirror = doc.addObject("Part::Feature", f"{obj.Name}Right")
+            mirror.Shape = mirror_shape
 
 
 #----------------------------------------------------------------------x---------------------------
