@@ -77,7 +77,8 @@ STEPS = {
     11: "Creating middle side walls...",
     12: "Combining and tweaking bottom plates...",
     13: "Cleaning up solids...",
-    14: "Creating and connecting right side...",
+    14: "Making holes in the inner walls...",
+    15: "Creating and connecting right side...",
 }
 
 def main():
@@ -193,6 +194,10 @@ def main():
                 for obj in doc.Objects:
                     obj.Shape = obj.Shape.removeSplitter()
             case 14:
+                make_holes_in_inner_walls(doc, config, objects["TopSideWall"],
+                    objects["AngledTopMiddleSideWall"], objects["TopRightSideWall"],
+                    objects["MiddleMiddleSideWall"])
+            case 15:
                 exclusion_list = ["TopMiddlePlate", "TopMiddleSideWall", "BottomMiddleSideWall"]
                 centre = objects["TopMiddlePlate"].Shape.CenterOfGravity
                 create_right_side(doc, centre, exclusion_list)
@@ -2801,6 +2806,83 @@ def make_halving_trim_for_middle_bottom_plate(config, middle):
     x_length = middle.Shape.BoundBox.XMax - middle.Shape.BoundBox.XMin
     shape = face.extrude(x_length * VECTOR_ONE_X)
     return shape
+
+
+#----------------------------------------------------------------------x---------------------------
+# The functions that make filleted holes in some of the inner walls.
+
+
+def make_holes_in_inner_walls(doc, config, top_wall, angled_top_wall, right_wall, middle_wall):
+    big_faces = sorted(top_wall.Shape.Faces, key=lambda f: f.Area, reverse=True)[0:2]
+    top_wall_face = sorted(big_faces, key=lambda f: f.CenterOfGravity.x)[1]
+    big_faces = sorted(angled_top_wall.Shape.Faces, key=lambda f: f.Area, reverse=True)[0:2]
+    angled_top_wall_face = sorted(big_faces, key=lambda f: f.CenterOfGravity.x)[0]
+
+    hole = make_hole_object(doc, config, top_wall_face, angled_top_wall_face)
+    fillet = make_fillet_object(doc, config, hole)
+    create_holes(doc, top_wall, angled_top_wall, fillet)
+    prints("Success: made holes into top wall of the top plate and"
+        + " angled top wall of the middle top plate.", 2)
+
+    big_faces = sorted(right_wall.Shape.Faces, key=lambda f: f.Area, reverse=True)[0:2]
+    right_wall_face = sorted(big_faces, key=lambda f: f.CenterOfGravity.x)[1]
+    big_faces = sorted(middle_wall.Shape.Faces, key=lambda f: f.Area, reverse=True)[0:2]
+    middle_wall_face = sorted(big_faces, key=lambda f: f.CenterOfGravity.x)[0]
+
+    hole = make_hole_object(doc, config, right_wall_face, middle_wall_face)
+    fillet = make_fillet_object(doc, config, hole)
+    create_holes(doc, right_wall, middle_wall, fillet)
+    prints("Success: made holes into right top wall of the top plate and"
+        + " middle wall of the middle top plate.", 2)
+
+
+def make_hole_object(doc, config, face_1, face_2):
+    common_face = face_1.common(face_2)
+    if common_face.ShapeType != "Face":
+        common_face = common_face.Faces[0]
+    common_face = expand_face(common_face,
+        float(config.get("Keyboard", "INNER_WALL_HOLE_SHRINK_MM")))
+    #common_TEST = doc.addObject("Part::Feature", f"CommonFaceTEST")
+    #common_TEST.Shape = common_face
+
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    normal = common_face.normalAt(0, 0)
+    shape_1 = common_face.extrude(thickness * normal)
+    shape_2 = common_face.extrude(thickness * -normal)
+    shape = shape_1.fuse(shape_2)
+    shape = shape.removeSplitter()
+    hole_object = doc.addObject("Part::Feature", f"HoleObject")
+    hole_object.Shape = shape
+    doc.recompute()
+    return hole_object
+
+
+def make_fillet_object(doc, config, hole_object):
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    fillet_radius = float(config.get("Keyboard", "INNER_WALL_HOLE_FILLET_RADIUS_MM"))
+    round_edges = []
+    i = 1
+    for edge in hole_object.Shape.Edges:
+        if is_close(edge.Length, 2.0 * thickness):
+            # The edges are identified by their index.
+            fillet_edge = (i, fillet_radius, fillet_radius)
+            round_edges.append(fillet_edge)
+        i = i + 1
+
+    fillet = doc.addObject("Part::Fillet", f"{hole_object.Name}Fillet")
+    fillet.Base = hole_object
+    fillet.Edges = round_edges
+    hole_object.Visibility = False
+    doc.recompute()
+    return fillet
+
+
+def create_holes(doc, wall_1, wall_2, fillet):
+    fillet_2 = fillet.Shape.copy()
+    wall_1.Shape = wall_1.Shape.cut(fillet.Shape)
+    wall_2.Shape = wall_2.Shape.cut(fillet_2)
+    doc.removeObject(fillet.Name)
+    doc.recompute()
 
 
 #----------------------------------------------------------------------x---------------------------
