@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 14
+START_AT_STEP = 0
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 14
+STOP_AT_STEP = 15
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -167,6 +167,7 @@ def main():
                 # shape first.
             case 9:
                 rotate_everything(config, objects, "LeftSideWall")
+                doc.recompute()
             case 10:
                 (bottom, top) = create_middle_plates(doc, config, objects["TopPlate"],
                     objects["BottomThumbPlate"], "MiddlePlate")
@@ -191,8 +192,18 @@ def main():
                 # Fusing leaves the unnecessary/internal edges on shapes. Some
                 # of them were useful when creating other shapes, so they are
                 # cleaned up only now.
+                # The top plate reacts to this poorly, but recreating
+                # it solves the issue.
+                top_plate_copy = objects["TopPlate"].Shape.copy()
+                doc.removeObject("TopPlate")
+                top_plate = doc.addObject("Part::Feature", "TopPlate")
+                top_plate.Shape = top_plate_copy
+                doc.recompute()
+
                 for obj in doc.Objects:
-                    obj.Shape = obj.Shape.removeSplitter()
+                    if obj.ViewObject.isVisible():
+                        obj.Shape = obj.Shape.removeSplitter()
+                doc.recompute()
             case 14:
                 make_holes_in_inner_walls(doc, config, objects["TopSideWall"],
                     objects["AngledTopMiddleSideWall"], objects["TopRightSideWall"],
@@ -2730,6 +2741,7 @@ def combine_and_tweak_bottom_plates(doc, config, main, wrist, thumb, middle, low
     trim_shape = trim_shape.fuse(lower_stopper.Shape)
     trim_shape = trim_shape.fuse(upper_stopper.Shape)
     trim_shape = trim_shape.fuse(half_trim)
+    doc.recompute()
     prints(f"Success: made trim shape.", 2)
 
     bottom_shape = main.Shape.fuse(wrist.Shape)
@@ -2740,12 +2752,14 @@ def combine_and_tweak_bottom_plates(doc, config, main, wrist, thumb, middle, low
     bottom_shape = bottom_shape.cut(trim_shape)
     bottom = doc.addObject("Part::Feature", f"{object_name}")
     bottom.Shape = bottom_shape
+    doc.recompute()
     prints(f"Success: fused and cut bottom plate.", 2)
 
     doc.removeObject(main.Name)
     doc.removeObject(wrist.Name)
     doc.removeObject(thumb.Name)
     doc.removeObject(middle.Name)
+    doc.recompute()
     prints(f"Success: removed old bottom plates.", 2)
 
     return bottom
