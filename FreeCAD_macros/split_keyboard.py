@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 14
+START_AT_STEP = 0
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 14
+STOP_AT_STEP = 16
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -77,8 +77,8 @@ STEPS = {
     11: "Creating middle side walls...",
     12: "Combining and tweaking bottom plates...",
     13: "Cleaning up solids...",
-    14: "Filleting edges...",
-    15: "Making holes in the inner walls...",
+    14: "Making holes in the inner walls...",
+    15: "Filleting edges...",
     16: "Creating and connecting right side...",
 }
 
@@ -168,6 +168,7 @@ def main():
                 # stoppers at this point. But make the full bottom
                 # shape first.
             case 9:
+                (objects, _) = get_objects(doc)
                 rotate_everything(config, objects, "LeftSideWall")
                 doc.recompute()
             case 10:
@@ -207,16 +208,19 @@ def main():
                         obj.Shape = obj.Shape.removeSplitter()
                 doc.recompute()
             case 14:
-                # Takes a long time.
-                # TODO: how to not fillet hole edges?
-                fillet_everything(doc, config, objects)
-            case 15:
+                (objects, _) = get_objects(doc)
                 make_holes_in_inner_walls(doc, config, objects["TopSideWall"],
                     objects["AngledTopMiddleSideWall"], objects["TopRightSideWall"],
                     objects["MiddleMiddleSideWall"])
+            case 15:
+                # Takes a long time.
+                # TODO: how to not fillet hole edges?
+                (objects, _) = get_objects(doc)
+                fillet_everything(doc, config, objects)
             case 16:
-                exclusion_list = ["TopMiddlePlate", "TopMiddleSideWall", "BottomMiddleSideWall"]
-                centre = objects["TopMiddlePlate"].Shape.CenterOfGravity
+                (objects, _) = get_objects(doc)
+                exclusion_list = ["TopMiddlePlateFillet", "TopMiddleSideWallFillet", "BottomMiddleSideWallFillet"]
+                centre = objects["TopMiddlePlateFillet"].Shape.CenterOfGravity
                 create_right_side(doc, centre, exclusion_list)
             case _:
                 break
