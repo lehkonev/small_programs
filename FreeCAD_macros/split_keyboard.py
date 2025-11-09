@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 8
+START_AT_STEP = 14
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 8
+STOP_AT_STEP = 14
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -77,8 +77,9 @@ STEPS = {
     11: "Creating middle side walls...",
     12: "Combining and tweaking bottom plates...",
     13: "Cleaning up solids...",
-    14: "Making holes in the inner walls...",
-    15: "Creating and connecting right side...",
+    14: "Filleting edges...",
+    15: "Making holes in the inner walls...",
+    16: "Creating and connecting right side...",
 }
 
 def main():
@@ -206,10 +207,14 @@ def main():
                         obj.Shape = obj.Shape.removeSplitter()
                 doc.recompute()
             case 14:
+                # Takes a long time.
+                # TODO: how to not fillet hole edges?
+                fillet_everything(doc, config, objects)
+            case 15:
                 make_holes_in_inner_walls(doc, config, objects["TopSideWall"],
                     objects["AngledTopMiddleSideWall"], objects["TopRightSideWall"],
                     objects["MiddleMiddleSideWall"])
-            case 15:
+            case 16:
                 exclusion_list = ["TopMiddlePlate", "TopMiddleSideWall", "BottomMiddleSideWall"]
                 centre = objects["TopMiddlePlate"].Shape.CenterOfGravity
                 create_right_side(doc, centre, exclusion_list)
@@ -356,6 +361,10 @@ def is_close(number_1, number_2):
     return isclose(number_1, number_2, abs_tol=PRECISION)
 
 
+def is_same_vector_or_negative(v_1, v_2):
+    return is_same_vector_vertex(v_1, v_2) or is_same_vector_vertex(v_1, -v_2)
+
+
 def is_same_vector_vertex(v_1, v_2):
     if (v_1 is None) and (v_2 is None):
         return True
@@ -392,6 +401,15 @@ def is_same_vector_vertex(v_1, v_2):
         raise Exception("Error: Could not compare vectors/vertices.")
 
     return is_close(v_1_x, v_2_x) and is_close(v_1_y, v_2_y) and is_close(v_1_z, v_2_z)
+
+
+def vector_in_list(vector, list):
+    i = 0
+    for v in list:
+        if is_same_vector_or_negative(v, vector):
+            return i
+        i = i + 1
+    return -1
 
 
 def vector_to_vertex(vector):
@@ -706,6 +724,45 @@ def find_second_to_max_x_of_switches(config, switch_plate):
     #prints(f"TEST: second_to_max_x_vertex: {format_vertex(second_to_max_x_vertex)}", 3)
     #prints(f"TEST: max_x_vertex: {format_vertex(max_x_vertex)}", 3)
     return second_to_max_x_vertex
+
+
+def make_fillet_object(doc, thickness, fillet_radius, object):
+    # Some objects have same length edges that are not supposed to
+    # be filleted. They can be identified by their direction; the
+    # correct ones all point in the same direction and there are
+    # more of them.
+    edge_lists = []
+    tangents = []
+    i = 0
+    for edge in object.Shape.Edges:
+        # The edges are identified by their index, so they all need
+        # to be gone through to get it right.
+        i = i + 1
+        if is_close(edge.Length, thickness):
+            fillet_edge = (i, fillet_radius, fillet_radius)
+            #fillet_edge = edge
+            tangent = edge.tangentAt(0)
+            index = vector_in_list(tangent, tangents)
+            if index < 0:
+                tangents.append(tangent)
+                edge_lists.append([])
+            edge_lists[index].append(fillet_edge)
+
+    round_edges = edge_lists[0]
+    for list in edge_lists:
+        length = len(list)
+        #prints(f"TEST: edge list length: {length}.", 3)
+        if length > len(round_edges):
+            round_edges = list
+
+    fillet = doc.addObject("Part::Fillet", f"{object.Name}Fillet")
+    fillet.Base = object
+    fillet.Edges = round_edges
+    object.Visibility = False
+    #object.Shape.makeFillet(fillet_radius, round_edges)
+    doc.recompute()
+    return fillet
+    #return object
 
 
 #----------------------------------------------------------------------x---------------------------
@@ -2863,13 +2920,16 @@ def make_halving_trim_for_middle_bottom_plate(config, middle):
 
 
 def make_holes_in_inner_walls(doc, config, top_wall, angled_top_wall, right_wall, middle_wall):
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    fillet_radius = float(config.get("Keyboard", "INNER_WALL_HOLE_FILLET_RADIUS_MM"))
+
     big_faces = sorted(top_wall.Shape.Faces, key=lambda f: f.Area, reverse=True)[0:2]
     top_wall_face = sorted(big_faces, key=lambda f: f.CenterOfGravity.x)[1]
     big_faces = sorted(angled_top_wall.Shape.Faces, key=lambda f: f.Area, reverse=True)[0:2]
     angled_top_wall_face = sorted(big_faces, key=lambda f: f.CenterOfGravity.x)[0]
 
     hole = make_hole_object(doc, config, top_wall_face, angled_top_wall_face)
-    fillet = make_fillet_object(doc, config, hole)
+    fillet = make_fillet_object(doc, 2.0 * thickness, fillet_radius, hole)
     create_holes(doc, top_wall, angled_top_wall, fillet)
     prints("Success: made holes into top wall of the top plate and"
         + " angled top wall of the middle top plate.", 2)
@@ -2880,7 +2940,7 @@ def make_holes_in_inner_walls(doc, config, top_wall, angled_top_wall, right_wall
     middle_wall_face = sorted(big_faces, key=lambda f: f.CenterOfGravity.x)[0]
 
     hole = make_hole_object(doc, config, right_wall_face, middle_wall_face)
-    fillet = make_fillet_object(doc, config, hole)
+    fillet = make_fillet_object(doc, 2.0 * thickness, fillet_radius, hole)
     create_holes(doc, right_wall, middle_wall, fillet)
     prints("Success: made holes into right top wall of the top plate and"
         + " middle wall of the middle top plate.", 2)
@@ -2907,32 +2967,25 @@ def make_hole_object(doc, config, face_1, face_2):
     return hole_object
 
 
-def make_fillet_object(doc, config, hole_object):
-    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
-    fillet_radius = float(config.get("Keyboard", "INNER_WALL_HOLE_FILLET_RADIUS_MM"))
-    round_edges = []
-    i = 1
-    for edge in hole_object.Shape.Edges:
-        if is_close(edge.Length, 2.0 * thickness):
-            # The edges are identified by their index.
-            fillet_edge = (i, fillet_radius, fillet_radius)
-            round_edges.append(fillet_edge)
-        i = i + 1
-
-    fillet = doc.addObject("Part::Fillet", f"{hole_object.Name}Fillet")
-    fillet.Base = hole_object
-    fillet.Edges = round_edges
-    hole_object.Visibility = False
-    doc.recompute()
-    return fillet
-
-
 def create_holes(doc, wall_1, wall_2, fillet):
     fillet_2 = fillet.Shape.copy()
     wall_1.Shape = wall_1.Shape.cut(fillet.Shape)
     wall_2.Shape = wall_2.Shape.cut(fillet_2)
     doc.removeObject(fillet.Name)
     doc.recompute()
+
+
+#----------------------------------------------------------------------x---------------------------
+# Fillet everything.
+
+
+def fillet_everything(doc, config, objects):
+    doc.recompute()
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    fillet_radius = float(config.get("Keyboard", "FILLET_RADIUS_MM"))
+    for obj in objects:
+        objects[obj] = make_fillet_object(doc, thickness, fillet_radius, objects[obj])
+        prints(f"Success: filleted {obj}.", 2)
 
 
 #----------------------------------------------------------------------x---------------------------
