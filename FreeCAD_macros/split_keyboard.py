@@ -57,11 +57,11 @@ VECTOR_ONE_Z = FreeCAD.Vector(0.0, 0.0, 1.0)
 # If START_AT_STEP is 0, create a new document. If it is not, try to
 # find a file with a number one less than it from the macro directory.
 # If not found, start at step 0.
-START_AT_STEP = 0
+START_AT_STEP = 8
 # If STOP_AT_STEP is equal to or greater than the existing maximum step,
 # all steps are performed. If it is below, only steps up to that
 # step are performed.
-STOP_AT_STEP = 15
+STOP_AT_STEP = 8
 STEPS = {
     0: "Creating document...",
     1: "Creating top plate switch holes...",
@@ -155,13 +155,14 @@ def main():
                 objects["TopPlateSupportLower"] = lower
                 objects["TopPlateSupportUpper"] = upper
 
-                (lower_support, upper_support, lower_stopper, upper_stopper) \
+                (lower_support, upper_support, lower_stopper, upper_stopper, long_stopper) \
                     = create_thumb_plate_supports(doc, config, objects["TopThumbPlate"],
                     objects["BottomThumbPlate"], objects["TopPlate"], "ThumbPlateSupport")
                 objects["ThumbPlateSupportLower"] = lower_support
                 objects["ThumbPlateSupportUpper"] = upper_support
                 objects["ThumbPlateSupportStopperLower"] = lower_stopper
                 objects["ThumbPlateSupportStopperUpper"] = upper_stopper
+                objects["ThumbPlateSupportStopperLong"] = long_stopper
                 # NOTE: BottomThumbPlate still needs holes for the
                 # stoppers at this point. But make the full bottom
                 # shape first.
@@ -1788,10 +1789,11 @@ def create_thumb_plate_supports(doc, config, top_thumb_plate, bottom_thumb_plate
     # of it will be lost due to kerf.)
     trim_upper_support(doc, config, top_plate, upper_support, f"{object_name}Upper")
 
-    (lower_stopper, upper_stopper) = create_thumb_plate_stoppers(doc, config, top_thumb_plate,
-        bottom_thumb_plate, lower_support, upper_support, f"{object_name}Stopper")
+    (lower_stopper, upper_stopper, long_stopper) = create_thumb_plate_stoppers(doc, config,
+        top_thumb_plate, bottom_thumb_plate, lower_support, upper_support,
+        f"{object_name}Stopper")
 
-    return (lower_support, upper_support, lower_stopper, upper_stopper)
+    return (lower_support, upper_support, lower_stopper, upper_stopper, long_stopper)
 
 
 def create_lower_edge_thumb_plate_support(doc, config, top_plate, object_name):
@@ -1997,7 +1999,10 @@ def create_thumb_plate_stoppers(doc, config, top_plate, bottom_plate, lower, upp
     # The lower thumb plate support cuts into the lower stopper,
     # so it needs to be trimmed.
     trim_lower_thumb_plate_support(doc, config, lower, lower_stopper)
-    return (lower_stopper, upper_stopper)
+    doc.recompute()
+    long_stopper = create_long_thumb_plate_stopper(doc, config, lower_stopper, upper_stopper,
+        f"{object_name}Long")
+    return (lower_stopper, upper_stopper, long_stopper)
 
 
 def extend_bottom_thumb_plate_for_stoppers(doc, config, bottom_plate):
@@ -2250,6 +2255,37 @@ def trim_lower_thumb_plate_support(doc, config, lower_support, lower_stopper):
     lower_support.Shape = new_shape
 
     prints(f"Success: trimmed {lower_support.Name}.", 3)
+
+
+def create_long_thumb_plate_stopper(doc, config, lower_stopper, upper_stopper, object_name):
+    # The second to highest (greater z) points on the stoppers
+    # are needed for calculating the place of the long stopper.
+    max_z_vertices = sorted(lower_stopper.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[:4]
+    # On the lower stopper, the right vertex is the one with biggest x.
+    left_vertex = sorted(max_z_vertices, key=lambda v: v.X, reverse=True)[0]
+
+    max_z_vertices = sorted(upper_stopper.Shape.Vertexes, key=lambda v: v.Z, reverse=True)[:4]
+    # On the upper stopper, the right vertex is the one with second biggest x.
+    right_vertex = sorted(max_z_vertices, key=lambda v: v.X, reverse=True)[1]
+
+    left_vector = vertex_to_vector(left_vertex)
+    right_vector = vertex_to_vector(right_vertex)
+    thickness = float(config.get("Keyboard", "CASE_THICKNESS_MM"))
+    left_vector.z = thickness
+    right_vector.z = thickness
+
+    line = Part.LineSegment(left_vector, right_vector)
+    edge = Part.Edge(line)
+    height = float(config.get("Keyboard", "LONG_STOPPER_HEIGHT_MM"))
+    face = edge.extrude(height * VECTOR_ONE_Z)
+    normal = face.normalAt(0, 0)
+    if normal.x < 0:
+        normal = -normal
+    extrude_vector = thickness * normal
+
+    long_stopper = make_solid_from_face(doc, face, extrude_vector, object_name)
+    prints(f"Success: created {object_name}.", 3)
+    return long_stopper
 
 
 #----------------------------------------------------------------------x---------------------------
